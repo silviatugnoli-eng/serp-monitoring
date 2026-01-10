@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  serp-monitor:
+    build: .
+    container_name: serp_monitoring
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env
+    environment:
+      - TZ=Europe/Rome
+    restart: unless-stopped
+    
+  serp-scheduler:
+    build: .
+    container_name: serp_scheduler
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env
+    environment:
+      - TZ=Europe/Rome
+    command: python serp_monitor.py --schedule
+  
+
+  web-app:
+    build: .
+    container_name: serp_webapp
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env
+      - ./templates:/app/templates
+    environment:
+      - TZ=Europe/Rome
+    ports:
+      - "5001:5000"
+    command: python app.py
+    restart: unless-stopped

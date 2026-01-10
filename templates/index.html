@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SERP Monitor - Analisi Reputazione</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            color: #667eea;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+            font-size: 1.1em;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+            font-size: 1.05em;
+        }
+        
+        textarea {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1em;
+            font-family: inherit;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        input[type="email"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="email"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .progress-container {
+            display: none;
+            margin-top: 30px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+        
+        .current-keyword {
+            text-align: center;
+            color: #666;
+            font-size: 1.1em;
+            margin-bottom: 20px;
+        }
+        
+        .results {
+            display: none;
+            margin-top: 30px;
+        }
+        
+        .result-item {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            border-left: 5px solid #667eea;
+        }
+        
+        .result-item.critical {
+            border-left-color: #dc3545;
+        }
+        
+        .result-item.warning {
+            border-left-color: #ffc107;
+        }
+        
+        .result-item.ok {
+            border-left-color: #28a745;
+        }
+        
+        .result-keyword {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .result-stats {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+        
+        .stat {
+            background: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.95em;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.85em;
+        }
+        
+        .stat-value {
+            font-weight: 600;
+            color: #333;
+            font-size: 1.1em;
+        }
+        
+        .download-btn {
+            margin-top: 20px;
+            background: #28a745;
+        }
+        
+        .download-btn:hover {
+            box-shadow: 0 10px 30px rgba(40, 167, 69, 0.4);
+        }
+        
+        .hint {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>🔍 SERP Monitor</h1>
+            <p class="subtitle">Analisi Reputazione Online su Google e Bing</p>
+            
+            <form id="analysisForm">
+                <div class="form-group">
+                    <label for="keywords">Keywords da analizzare</label>
+                    <textarea 
+                        id="keywords" 
+                        rows="8" 
+                        placeholder="Inserisci una keyword per riga, esempio:&#10;Leonardo Apache La Russa&#10;Leonardo La Russa&#10;Apache La Russa"
+                        required
+                    ></textarea>
+                    <p class="hint">💡 Una keyword per riga. Verranno cercate su Google e Bing.</p>
+                </div>
+                
+                <div class="form-group">
+                    <label for="timeFilter">Periodo di ricerca</label>
+                    <select id="timeFilter" style="width: 100%; padding: 15px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 1em; background: white; cursor: pointer;">
+                        <option value="">📅 Tutte le notizie</option>
+                        <option value="day">🆕 Solo ultime 24 ore</option>
+                        <option value="week">📰 Ultima settimana</option>
+                        <option value="month">📊 Ultimo mese</option>
+                    </select>
+                    <p class="hint">⏰ Filtra i risultati per data di pubblicazione</p>
+                </div>
+                
+                <div class="form-group">
+                    <label for="email">Email per ricevere i risultati (opzionale)</label>
+                    <input 
+                        type="email" 
+                        id="email" 
+                        placeholder="tuaemail@esempio.com"
+                    />
+                    <p class="hint">📧 Se inserita, riceverai l'email con i link alle notizie + Excel allegato</p>
+                </div>
+                
+                <button type="submit" class="btn" id="analyzeBtn">
+                    Avvia Analisi
+                </button>
+            </form>
+            
+            <div class="progress-container" id="progressContainer">
+                <div class="current-keyword" id="currentKeyword"></div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill">0%</div>
+                </div>
+            </div>
+            
+            <div class="results" id="results">
+                <h2 style="margin-bottom: 20px; color: #333;">📊 Risultati</h2>
+                <div id="resultsList"></div>
+                <button class="btn download-btn" onclick="downloadExcel()">
+                    📥 Scarica Report Excel
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const form = document.getElementById('analysisForm');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const currentKeyword = document.getElementById('currentKeyword');
+        const results = document.getElementById('results');
+        const resultsList = document.getElementById('resultsList');
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const keywordsText = document.getElementById('keywords').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const timeFilter = document.getElementById('timeFilter').value;
+            
+            if (!keywordsText) {
+                alert('Inserisci almeno una keyword!');
+                return;
+            }
+            
+            const keywords = keywordsText.split('\n').filter(k => k.trim() !== '');
+            
+            // Avvia analisi
+            analyzeBtn.disabled = true;
+            analyzeBtn.innerHTML = '<span class="spinner"></span> Analisi in corso...';
+            progressContainer.style.display = 'block';
+            results.style.display = 'none';
+            
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        keywords, 
+                        email,
+                        time_filter: timeFilter || null
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Errore avvio analisi');
+                }
+                
+                // Monitora progresso
+                monitorProgress();
+                
+            } catch (error) {
+                alert('Errore: ' + error.message);
+                resetUI();
+            }
+        });
+        
+        async function monitorProgress() {
+            const checkStatus = async () => {
+                try {
+                    const response = await fetch('/status');
+                    const status = await response.json();
+                    
+                    // Aggiorna UI
+                    progressFill.style.width = status.progress + '%';
+                    progressFill.textContent = status.progress + '%';
+                    
+                    if (status.current_keyword) {
+                        currentKeyword.textContent = `🔎 Analizzando: ${status.current_keyword}`;
+                    }
+                    
+                    if (status.running) {
+                        setTimeout(checkStatus, 1000);
+                    } else {
+                        // Analisi completata
+                        displayResults(status.results);
+                        resetUI();
+                    }
+                } catch (error) {
+                    console.error('Errore controllo stato:', error);
+                    setTimeout(checkStatus, 2000);
+                }
+            };
+            
+            checkStatus();
+        }
+        
+        function displayResults(data) {
+            resultsList.innerHTML = '';
+            
+            data.forEach(item => {
+                const statusClass = 
+                    item['Score Medio'] >= 70 ? 'ok' :
+                    item['Score Medio'] >= 40 ? 'warning' : 'critical';
+                
+                const div = document.createElement('div');
+                div.className = `result-item ${statusClass}`;
+                div.innerHTML = `
+                    <div class="result-keyword">${item.Keyword}</div>
+                    <div class="result-stats">
+                        <div class="stat">
+                            <div class="stat-label">Google</div>
+                            <div class="stat-value">${item['Risultati Google']} risultati</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">Bing</div>
+                            <div class="stat-value">${item['Risultati Bing']} risultati</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">Stato</div>
+                            <div class="stat-value">${item.Stato}</div>
+                        </div>
+                    </div>
+                `;
+                resultsList.appendChild(div);
+            });
+            
+            results.style.display = 'block';
+        }
+        
+        function resetUI() {
+            analyzeBtn.disabled = false;
+            analyzeBtn.textContent = 'Avvia Analisi';
+        }
+        
+        function downloadExcel() {
+            window.location.href = '/download';
+        }
+    </script>
+</body>
+</html>
