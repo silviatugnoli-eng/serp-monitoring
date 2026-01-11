@@ -38,9 +38,6 @@ HEADERS = {
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
 }
 
-NEGATIVE_KEYWORDS = ['scandalo', 'critica', 'polemiche', 'accusa', 'condanna', 'fallimento']
-POSITIVE_KEYWORDS = ['successo', 'eccellenza', 'premio', 'vittoria', 'innovazione', 'trionfo']
-
 analysis_status = {'running': False, 'progress': 0, 'current_keyword': '', 'results': []}
 
 def login_required(f):
@@ -169,14 +166,42 @@ def send_email(summary):
         msg['To'] = recipient
         msg['Subject'] = f"SERP Report - {datetime.now().strftime('%d/%m/%Y')}"
         
-        html = "<html><body><h2>Report SERP Monitoring</h2>"
+        html = "<html><body style='font-family: Arial, sans-serif;'>"
+        html += "<h2>📊 Report SERP Monitoring</h2>"
+        html += f"<p><em>Data: {datetime.now().strftime('%d/%m/%Y alle %H:%M')}</em></p>"
+        
         for item in summary:
-            html += f"<p><strong>{item['Keyword']}</strong><br>"
-            for idx, r in enumerate(item.get('google_results', [])[:3], 1):
-                if r['url'] != 'N/A':
-                    html += f'{idx}. <a href="{r["url"]}">{r["title"]}</a><br>'
-            html += "</p>"
+            keyword = item['Keyword']
+            total_google = len(item.get('google_results', []))
+            total_bing = len(item.get('bing_results', []))
+            
+            html += f"<hr><h3>🔑 Keyword: {keyword}</h3>"
+            
+            # GOOGLE - Numero totale + primi 10 link
+            html += f"<p><strong>Google:</strong> {total_google} risultati trovati</p>"
+            if total_google > 0:
+                html += "<ol>"
+                for idx, r in enumerate(item.get('google_results', [])[:10], 1):
+                    if r['url'] != 'N/A':
+                        html += f'<li><a href="{r["url"]}">{r["title"]}</a></li>'
+                html += "</ol>"
+                if total_google > 10:
+                    html += f"<p><em>... e altri {total_google - 10} risultati (vedi Excel)</em></p>"
+            
+            # BING - Numero totale + primi 10 link
+            html += f"<p><strong>Bing:</strong> {total_bing} risultati trovati</p>"
+            if total_bing > 0:
+                html += "<ol>"
+                for idx, r in enumerate(item.get('bing_results', [])[:10], 1):
+                    if r['url'] != 'N/A':
+                        html += f'<li><a href="{r["url"]}">{r["title"]}</a></li>'
+                html += "</ol>"
+                if total_bing > 10:
+                    html += f"<p><em>... e altri {total_bing - 10} risultati (vedi Excel)</em></p>"
+        
+        html += "<hr><p><strong>📎 Report completo con TUTTI i risultati nel file Excel allegato.</strong></p>"
         html += "</body></html>"
+        
         msg.attach(MIMEText(html, 'html'))
         
         if EXCEL_FILE.exists():
@@ -204,12 +229,11 @@ def run_analysis(keywords, email, time_filter=None):
         analysis_status['current_keyword'] = keyword
         analysis_status['progress'] = int((idx / total) * 100)
         
-        google_results = search_google(keyword, time_filter=time_filter)
-        bing_results = search_bing(keyword, time_filter=time_filter)
+        google_results = search_google(keyword, num_results=50, time_filter=time_filter)  # Prendi 50 risultati
+        bing_results = search_bing(keyword, num_results=50, time_filter=time_filter)
         combined = google_results + bing_results
         
         for r in combined:
-            r['sentiment'] = analyze_sentiment(f"{r['title']} {r['snippet']}")
             r['keyword'] = keyword
             r['timestamp'] = datetime.now().isoformat()
         
@@ -224,7 +248,7 @@ def run_analysis(keywords, email, time_filter=None):
     save_results(all_results, summary_data)
     if email:
         os.environ['ALERT_EMAIL'] = email
-        send_email(summary_data)
+        send_email(summary_data)  # Email con solo top 10
     
     analysis_status['running'] = False
     analysis_status['progress'] = 100
