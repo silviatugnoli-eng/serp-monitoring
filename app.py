@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -14,75 +14,58 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
+from functools import wraps
 
 # Carica variabili ambiente
 load_dotenv()
 
 # Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'chiave-segreta-da-cambiare-in-produzione')
+
+# PASSWORD DI ACCESSO (cambiala!)
+ACCESS_PASSWORD = os.environ.get('ACCESS_PASSWORD', 'serp2026')
 
 # Configurazione
 DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 EXCEL_FILE = DATA_DIR / "serp_monitoring_results.xlsx"
-HISTORY_FILE = DATA_DIR / "serp_history.json"
 
-# Headers per evitare blocchi
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7',
 }
 
-# Sentiment keywords
-NEGATIVE_KEYWORDS = [
-    'scandalo', 'critica', 'polemiche', 'accusa', 'condanna', 'fallimento',
-    'disastro', 'problema', 'errore', 'bufera', 'caso', 'inchiesta',
-]
+NEGATIVE_KEYWORDS = ['scandalo', 'critica', 'polemiche', 'accusa', 'condanna', 'fallimento']
+POSITIVE_KEYWORDS = ['successo', 'eccellenza', 'premio', 'vittoria', 'innovazione', 'trionfo']
 
-POSITIVE_KEYWORDS = [
-    'successo', 'eccellenza', 'premio', 'vittoria', 'innovazione', 'trionfo',
-    'riconoscimento', 'leadership', 'merito', 'onore', 'apprezzamento',
-]
+analysis_status = {'running': False, 'progress': 0, 'current_keyword': '', 'results': []}
 
-# Stato dell'analisi in corso
-analysis_status = {
-    'running': False,
-    'progress': 0,
-    'current_keyword': '',
-    'results': []
-}
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('logged_in'):
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 def search_google(keyword, num_results=10, time_filter=None):
-    """Cerca su Google usando SerpAPI"""
     serpapi_key = os.getenv('SERPAPI_KEY')
     if not serpapi_key:
         logging.error("SERPAPI_KEY non configurata!")
         return []
     
     try:
-        logging.info(f"🔍 Cercando su Google: {keyword}")
-        
+        logging.info(f"🔍 Google: {keyword}")
         params = {
-            'engine': 'google',
-            'q': keyword,
-            'num': num_results,
-            'hl': 'it',
-            'gl': 'it',
-            'api_key': serpapi_key
+            'engine': 'google', 'q': keyword, 'num': num_results,
+            'hl': 'it', 'gl': 'it', 'api_key': serpapi_key
         }
-        
-        if time_filter == 'day':
-            params['tbs'] = 'qdr:d'
-        elif time_filter == 'week':
-            params['tbs'] = 'qdr:w'
-        elif time_filter == 'month':
-            params['tbs'] = 'qdr:m'
+        if time_filter == 'day': params['tbs'] = 'qdr:d'
+        elif time_filter == 'week': params['tbs'] = 'qdr:w'
+        elif time_filter == 'month': params['tbs'] = 'qdr:m'
         
         response = requests.get('https://serpapi.com/search', params=params, timeout=15)
         response.raise_for_status()
@@ -91,36 +74,27 @@ def search_google(keyword, num_results=10, time_filter=None):
         results = []
         for idx, item in enumerate(data.get('organic_results', [])[:num_results], 1):
             results.append({
-                'position': idx,
-                'title': item.get('title', 'N/A'),
-                'url': item.get('link', 'N/A'),
-                'snippet': item.get('snippet', ''),
+                'position': idx, 'title': item.get('title', 'N/A'),
+                'url': item.get('link', 'N/A'), 'snippet': item.get('snippet', ''),
                 'source': 'Google'
             })
-        
-        logging.info(f"✓ Trovati {len(results)} risultati Google")
+        logging.info(f"✓ {len(results)} risultati Google")
         return results
     except Exception as e:
         logging.error(f"✗ Errore Google: {e}")
         return []
 
 def search_bing(keyword, num_results=10, time_filter=None):
-    """Cerca su Bing usando SerpAPI"""
     serpapi_key = os.getenv('SERPAPI_KEY')
     if not serpapi_key:
         return []
     
     try:
-        logging.info(f"🔍 Cercando su Bing: {keyword}")
-        
+        logging.info(f"🔍 Bing: {keyword}")
         params = {
-            'engine': 'bing',
-            'q': keyword,
-            'count': num_results,
-            'cc': 'it',
-            'api_key': serpapi_key
+            'engine': 'bing', 'q': keyword, 'count': num_results,
+            'cc': 'it', 'api_key': serpapi_key
         }
-        
         response = requests.get('https://serpapi.com/search', params=params, timeout=15)
         response.raise_for_status()
         data = response.json()
@@ -128,36 +102,26 @@ def search_bing(keyword, num_results=10, time_filter=None):
         results = []
         for idx, item in enumerate(data.get('organic_results', [])[:num_results], 1):
             results.append({
-                'position': idx,
-                'title': item.get('title', 'N/A'),
-                'url': item.get('link', 'N/A'),
-                'snippet': item.get('snippet', ''),
+                'position': idx, 'title': item.get('title', 'N/A'),
+                'url': item.get('link', 'N/A'), 'snippet': item.get('snippet', ''),
                 'source': 'Bing'
             })
-        
-        logging.info(f"✓ Trovati {len(results)} risultati Bing")
+        logging.info(f"✓ {len(results)} risultati Bing")
         return results
     except Exception as e:
         logging.error(f"✗ Errore Bing: {e}")
         return []
 
 def analyze_sentiment(text):
-    """Analizza sentiment"""
     text_lower = text.lower()
     negative = sum(1 for w in NEGATIVE_KEYWORDS if w in text_lower)
     positive = sum(1 for w in POSITIVE_KEYWORDS if w in text_lower)
-    
-    if negative > positive:
-        return 'NEGATIVO'
-    elif positive > negative:
-        return 'POSITIVO'
-    return 'NEUTRO'
+    return 'NEGATIVO' if negative > positive else ('POSITIVO' if positive > negative else 'NEUTRO')
 
 def save_results(results, summary):
-    """Salva risultati in Excel"""
     try:
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
-            # Foglio 1: Dettaglio SERP
+            # Foglio 1
             if results:
                 df = pd.DataFrame(results)
                 df = df[['keyword', 'source', 'position', 'title', 'url', 'snippet', 'timestamp']]
@@ -166,19 +130,17 @@ def save_results(results, summary):
                 df = pd.DataFrame(columns=['Keyword', 'Motore', 'Posizione', 'Titolo', 'URL', 'Snippet', 'Timestamp'])
             df.to_excel(writer, sheet_name='Dettaglio SERP', index=False)
             
-            # Foglio 2: Summary
+            # Foglio 2
             if summary:
                 df_sum = pd.DataFrame([{
-                    'Keyword': s['Keyword'],
-                    'Risultati Google': s['Risultati Google'],
-                    'Risultati Bing': s['Risultati Bing'],
-                    'Timestamp': s['Timestamp']
+                    'Keyword': s['Keyword'], 'Risultati Google': s['Risultati Google'],
+                    'Risultati Bing': s['Risultati Bing'], 'Timestamp': s['Timestamp']
                 } for s in summary])
             else:
                 df_sum = pd.DataFrame(columns=['Keyword', 'Risultati Google', 'Risultati Bing', 'Timestamp'])
             df_sum.to_excel(writer, sheet_name='Summary', index=False)
             
-            # Foglio 3: Statistiche
+            # Foglio 3
             total_g = sum(s['Risultati Google'] for s in summary) if summary else 0
             total_b = sum(s['Risultati Bing'] for s in summary) if summary else 0
             avg_pos = sum(r['position'] for r in results) / len(results) if results else 0
@@ -190,18 +152,15 @@ def save_results(results, summary):
                           datetime.now().isoformat()]
             })
             df_stats.to_excel(writer, sheet_name='Statistiche', index=False)
-        
-        logging.info(f"✓ Excel salvato")
+        logging.info("✓ Excel salvato")
     except Exception as e:
         logging.error(f"✗ Errore Excel: {e}")
 
 def send_email(summary):
-    """Invia email con risultati"""
     try:
         sender = os.getenv('SENDER_EMAIL')
         password = os.getenv('SENDER_PASSWORD')
         recipient = os.getenv('ALERT_EMAIL')
-        
         if not all([sender, password, recipient]):
             return
         
@@ -213,22 +172,10 @@ def send_email(summary):
         html = "<html><body><h2>Report SERP Monitoring</h2>"
         for item in summary:
             html += f"<p><strong>{item['Keyword']}</strong><br>"
-            
-            google_results = item.get('google_results', [])
-            if google_results:
-                html += "<strong>Link Google:</strong><br>"
-                for idx, r in enumerate(google_results[:3], 1):
-                    if r['url'] != 'N/A':
-                        html += f'{idx}. <a href="{r["url"]}">{r["title"]}</a><br>'
-            
-            bing_results = item.get('bing_results', [])
-            if bing_results:
-                html += "<strong>Link Bing:</strong><br>"
-                for idx, r in enumerate(bing_results[:3], 1):
-                    if r['url'] != 'N/A':
-                        html += f'{idx}. <a href="{r["url"]}">{r["title"]}</a><br>'
+            for idx, r in enumerate(item.get('google_results', [])[:3], 1):
+                if r['url'] != 'N/A':
+                    html += f'{idx}. <a href="{r["url"]}">{r["title"]}</a><br>'
             html += "</p>"
-        
         html += "</body></html>"
         msg.attach(MIMEText(html, 'html'))
         
@@ -243,15 +190,12 @@ def send_email(summary):
             server.starttls()
             server.login(sender, password)
             server.send_message(msg)
-        
         logging.info("✓ Email inviata")
     except Exception as e:
         logging.error(f"✗ Errore email: {e}")
 
 def run_analysis(keywords, email, time_filter=None):
-    """Esegue analisi in background"""
     global analysis_status
-    
     all_results = []
     summary_data = []
     total = len(keywords)
@@ -262,28 +206,22 @@ def run_analysis(keywords, email, time_filter=None):
         
         google_results = search_google(keyword, time_filter=time_filter)
         bing_results = search_bing(keyword, time_filter=time_filter)
-        
         combined = google_results + bing_results
+        
         for r in combined:
             r['sentiment'] = analyze_sentiment(f"{r['title']} {r['snippet']}")
             r['keyword'] = keyword
             r['timestamp'] = datetime.now().isoformat()
         
         all_results.extend(combined)
-        
         summary_data.append({
-            'Keyword': keyword,
-            'Risultati Google': len(google_results),
-            'Risultati Bing': len(bing_results),
-            'Timestamp': datetime.now().isoformat(),
-            'google_results': google_results,
-            'bing_results': bing_results
+            'Keyword': keyword, 'Risultati Google': len(google_results),
+            'Risultati Bing': len(bing_results), 'Timestamp': datetime.now().isoformat(),
+            'google_results': google_results, 'bing_results': bing_results
         })
-        
         analysis_status['results'].append(summary_data[-1])
     
     save_results(all_results, summary_data)
-    
     if email:
         os.environ['ALERT_EMAIL'] = email
         send_email(summary_data)
@@ -291,14 +229,29 @@ def run_analysis(keywords, email, time_filter=None):
     analysis_status['running'] = False
     analysis_status['progress'] = 100
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        if request.form.get('password') == ACCESS_PASSWORD:
+            session['logged_in'] = True
+            return redirect(url_for('index'))
+        return render_template('login.html', error='Password errata!')
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    return redirect(url_for('login'))
+
 @app.route('/')
+@login_required
 def index():
     return render_template('index.html')
 
 @app.route('/analyze', methods=['POST'])
+@login_required
 def analyze():
     global analysis_status
-    
     if analysis_status['running']:
         return jsonify({'error': 'Analisi in corso'}), 400
     
@@ -311,18 +264,18 @@ def analyze():
         return jsonify({'error': 'Nessuna keyword'}), 400
     
     analysis_status = {'running': True, 'progress': 0, 'current_keyword': '', 'results': []}
-    
     thread = threading.Thread(target=run_analysis, args=(keywords, email, time_filter))
     thread.daemon = True
     thread.start()
-    
     return jsonify({'status': 'started'})
 
 @app.route('/status')
+@login_required
 def status():
     return jsonify(analysis_status)
 
 @app.route('/download')
+@login_required
 def download():
     if EXCEL_FILE.exists():
         return send_file(EXCEL_FILE, as_attachment=True, 
