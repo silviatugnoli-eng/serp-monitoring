@@ -109,12 +109,6 @@ def search_bing(keyword, num_results=10, time_filter=None):
         logging.error(f"✗ Errore Bing: {e}")
         return []
 
-def analyze_sentiment(text):
-    text_lower = text.lower()
-    negative = sum(1 for w in NEGATIVE_KEYWORDS if w in text_lower)
-    positive = sum(1 for w in POSITIVE_KEYWORDS if w in text_lower)
-    return 'NEGATIVO' if negative > positive else ('POSITIVO' if positive > negative else 'NEUTRO')
-
 def save_results(results, summary):
     try:
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
@@ -158,7 +152,14 @@ def send_email(summary):
         sender = os.getenv('SENDER_EMAIL')
         password = os.getenv('SENDER_PASSWORD')
         recipient = os.getenv('ALERT_EMAIL')
+        
+        logging.info(f"Tentativo invio email...")
+        logging.info(f"Sender configurato: {sender is not None}")
+        logging.info(f"Password configurata: {password is not None}")
+        logging.info(f"Recipient configurato: {recipient is not None}")
+        
         if not all([sender, password, recipient]):
+            logging.warning("❌ Email non configurata correttamente - skip invio")
             return
         
         msg = MIMEMultipart()
@@ -209,15 +210,21 @@ def send_email(summary):
                 attach = MIMEApplication(f.read(), _subtype='xlsx')
                 attach.add_header('Content-Disposition', 'attachment', filename=EXCEL_FILE.name)
                 msg.attach(attach)
+            logging.info("Excel allegato aggiunto")
         
+        logging.info(f"Connessione SMTP a {os.getenv('SMTP_SERVER')}:{os.getenv('SMTP_PORT')}")
         with smtplib.SMTP(os.getenv('SMTP_SERVER', 'smtp.gmail.com'), 
                          int(os.getenv('SMTP_PORT', 587))) as server:
             server.starttls()
+            logging.info("TLS avviato")
             server.login(sender, password)
+            logging.info("Login effettuato")
             server.send_message(msg)
-        logging.info("✓ Email inviata")
+            logging.info(f"✓ Email inviata con successo a {recipient}")
     except Exception as e:
-        logging.error(f"✗ Errore email: {e}")
+        logging.error(f"✗ Errore invio email: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
 
 def run_analysis(keywords, email, time_filter=None):
     global analysis_status
