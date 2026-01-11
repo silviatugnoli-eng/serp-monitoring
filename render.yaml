@@ -3,7 +3,7 @@ services:
     name: serp-monitor
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app
+    startCommand: gunicorn --bind 0.0.0.0:$PORT app:app --workers 1 --threads 2
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
@@ -18,6 +18,10 @@ services:
       - key: SENDER_PASSWORD
         sync: false
       - key: ALERT_EMAIL
+        sync: false
+      - key: ACCESS_PASSWORD
+        sync: false
+      - key: SECRET_KEY
         sync: false
       - key: TZ
         value: Europe/Rome
