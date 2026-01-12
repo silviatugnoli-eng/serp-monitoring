@@ -7,12 +7,12 @@
     <style>
         /* COLORI PERSONALIZZABILI - Modifica questi valori */
         :root {
-            --primary-color: #667eea;      /* Colore principale (viola) */
-            --secondary-color: #764ba2;    /* Colore secondario (viola scuro) */
-            --accent-color: #28a745;       /* Colore accento (verde) */
-            --text-color: #333;            /* Colore testo */
-            --bg-light: #f8f9fa;          /* Sfondo chiaro */
-            --border-color: #e0e0e0;       /* Bordi */
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --accent-color: #28a745;
+            --text-color: #333;
+            --bg-light: #f8f9fa;
+            --border-color: #e0e0e0;
             --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
         
@@ -244,7 +244,7 @@
                     <textarea 
                         id="keywords" 
                         rows="8" 
-                        placeholder="Inserisci una keyword per riga, esempio:&#10;Parola chiave 1&#10;Parola chiave 1&#10;Parola chiave 3"
+                        placeholder="Inserisci una keyword per riga, esempio:&#10;Parola chiave 1&#10;Parola chiave 2&#10;Parola chiave 3"
                         required
                     ></textarea>
                     <p class="hint">💡 Una keyword per riga. Verranno cercate su Google e Bing.</p>
@@ -252,7 +252,7 @@
                 
                 <div class="form-group">
                     <label for="timeFilter">Periodo di ricerca</label>
-                    <select id="timeFilter" style="width: 100%; padding: 15px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 1em; background: white; cursor: pointer;">
+                    <select id="timeFilter">
                         <option value="">📅 Tutte le notizie</option>
                         <option value="day">🆕 Solo ultime 24 ore</option>
                         <option value="week">📰 Ultima settimana</option>
@@ -315,6 +315,11 @@
             }
             
             const keywords = keywordsText.split('\n').filter(k => k.trim() !== '');
+            
+            if (keywords.length > 20) {
+                alert('Massimo 20 keywords per analisi!');
+                return;
+            }
             
             // Avvia analisi
             analyzeBtn.disabled = true;
@@ -382,12 +387,8 @@
             resultsList.innerHTML = '';
             
             data.forEach(item => {
-                const statusClass = 
-                    item['Score Medio'] >= 70 ? 'ok' :
-                    item['Score Medio'] >= 40 ? 'warning' : 'critical';
-                
                 const div = document.createElement('div');
-                div.className = `result-item ${statusClass}`;
+                div.className = 'result-item';
                 div.innerHTML = `
                     <div class="result-keyword">${item.Keyword}</div>
                     <div class="result-stats">
@@ -398,10 +399,6 @@
                         <div class="stat">
                             <div class="stat-label">Bing</div>
                             <div class="stat-value">${item['Risultati Bing']} risultati</div>
-                        </div>
-                        <div class="stat">
-                            <div class="stat-label">Stato</div>
-                            <div class="stat-value">${item.Stato}</div>
                         </div>
                     </div>
                 `;
