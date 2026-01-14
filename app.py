@@ -215,7 +215,7 @@ def send_email(summary):
             logging.info("Excel allegato aggiunto")
         
         logging.info(f"Connessione SMTP a {os.getenv('SMTP_SERVER')}:{os.getenv('SMTP_PORT')}")
-        with smtplib.SMTP(os.getenv('SMTP_SERVER', 'smtp.gmail.com'), 
+        with smtplib.SMTP(os.getenv('SMTP_SERVER', 'smtp.mailgun.org'), 
                          int(os.getenv('SMTP_PORT', 587))) as server:
             server.starttls()
             logging.info("TLS avviato")
