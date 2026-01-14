@@ -10,10 +10,6 @@ import time
 import os
 import logging
 from dotenv import load_dotenv
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
 from functools import wraps
 
 # Carica variabili ambiente
@@ -109,10 +105,16 @@ def search_bing(keyword, num_results=10, time_filter=None):
         logging.error(f"✗ Errore Bing: {e}")
         return []
 
+def analyze_sentiment(text):
+    text_lower = text.lower()
+    negative = sum(1 for w in NEGATIVE_KEYWORDS if w in text_lower)
+    positive = sum(1 for w in POSITIVE_KEYWORDS if w in text_lower)
+    return 'NEGATIVO' if negative > positive else ('POSITIVO' if positive > negative else 'NEUTRO')
+
 def save_results(results, summary):
     try:
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
-            # Foglio 1: Dettaglio SERP
+            # Foglio 1
             if results:
                 df = pd.DataFrame(results)
                 df = df[['keyword', 'source', 'position', 'title', 'url', 'snippet', 'timestamp']]
@@ -121,19 +123,17 @@ def save_results(results, summary):
                 df = pd.DataFrame(columns=['Keyword', 'Motore', 'Posizione', 'Titolo', 'URL', 'Snippet', 'Timestamp'])
             df.to_excel(writer, sheet_name='Dettaglio SERP', index=False)
             
-            # Foglio 2: Summary
+            # Foglio 2
             if summary:
                 df_sum = pd.DataFrame([{
-                    'Keyword': s['Keyword'], 
-                    'Risultati Google': s['Risultati Google'],
-                    'Risultati Bing': s['Risultati Bing'], 
-                    'Timestamp': s['Timestamp']
+                    'Keyword': s['Keyword'], 'Risultati Google': s['Risultati Google'],
+                    'Risultati Bing': s['Risultati Bing'], 'Timestamp': s['Timestamp']
                 } for s in summary])
             else:
                 df_sum = pd.DataFrame(columns=['Keyword', 'Risultati Google', 'Risultati Bing', 'Timestamp'])
             df_sum.to_excel(writer, sheet_name='Summary', index=False)
             
-            # Foglio 3: Statistiche
+            # Foglio 3
             total_g = sum(s['Risultati Google'] for s in summary) if summary else 0
             total_b = sum(s['Risultati Bing'] for s in summary) if summary else 0
             avg_pos = sum(r['position'] for r in results) / len(results) if results else 0
@@ -184,7 +184,7 @@ def send_email(summary):
             html += f"<p><strong>Google:</strong> {total_google} risultati trovati</p>"
             if total_google > 0:
                 html += "<ol>"
-                for r in item.get('google_results', [])[:10]:
+                for idx, r in enumerate(item.get('google_results', [])[:10], 1):
                     if r['url'] != 'N/A':
                         html += f'<li><a href="{r["url"]}">{r["title"]}</a></li>'
                 html += "</ol>"
@@ -195,7 +195,7 @@ def send_email(summary):
             html += f"<p><strong>Bing:</strong> {total_bing} risultati trovati</p>"
             if total_bing > 0:
                 html += "<ol>"
-                for r in item.get('bing_results', [])[:10]:
+                for idx, r in enumerate(item.get('bing_results', [])[:10], 1):
                     if r['url'] != 'N/A':
                         html += f'<li><a href="{r["url"]}">{r["title"]}</a></li>'
                 html += "</ol>"
@@ -238,14 +238,8 @@ def run_analysis(keywords, email, time_filter=None):
         analysis_status['current_keyword'] = keyword
         analysis_status['progress'] = int((idx / total) * 100)
         
-        # Cerca su Google
-        google_results = search_google(keyword, num_results=50, time_filter=time_filter)
-        time.sleep(1)  # Delay per evitare rate limiting
-        
-        # Cerca su Bing
+        google_results = search_google(keyword, num_results=50, time_filter=time_filter)  # Prendi 50 risultati
         bing_results = search_bing(keyword, num_results=50, time_filter=time_filter)
-        time.sleep(1)  # Delay per evitare rate limiting
-        
         combined = google_results + bing_results
         
         for r in combined:
@@ -254,20 +248,16 @@ def run_analysis(keywords, email, time_filter=None):
         
         all_results.extend(combined)
         summary_data.append({
-            'Keyword': keyword, 
-            'Risultati Google': len(google_results),
-            'Risultati Bing': len(bing_results), 
-            'Timestamp': datetime.now().isoformat(),
-            'google_results': google_results, 
-            'bing_results': bing_results
+            'Keyword': keyword, 'Risultati Google': len(google_results),
+            'Risultati Bing': len(bing_results), 'Timestamp': datetime.now().isoformat(),
+            'google_results': google_results, 'bing_results': bing_results
         })
         analysis_status['results'].append(summary_data[-1])
     
     save_results(all_results, summary_data)
-    
     if email:
         os.environ['ALERT_EMAIL'] = email
-        send_email(summary_data)
+        send_email(summary_data)  # Email con solo top 10
     
     analysis_status['running'] = False
     analysis_status['progress'] = 100
@@ -306,10 +296,6 @@ def analyze():
     if not keywords:
         return jsonify({'error': 'Nessuna keyword'}), 400
     
-    # Limite massimo keywords per evitare abusi API
-    if len(keywords) > 20:
-        return jsonify({'error': 'Massimo 20 keywords per analisi'}), 400
-    
     analysis_status = {'running': True, 'progress': 0, 'current_keyword': '', 'results': []}
     thread = threading.Thread(target=run_analysis, args=(keywords, email, time_filter))
     thread.daemon = True
@@ -332,4 +318,3 @@ def download():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-    
