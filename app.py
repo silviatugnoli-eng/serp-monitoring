@@ -105,12 +105,6 @@ def search_bing(keyword, num_results=10, time_filter=None):
         logging.error(f"✗ Errore Bing: {e}")
         return []
 
-def analyze_sentiment(text):
-    text_lower = text.lower()
-    negative = sum(1 for w in NEGATIVE_KEYWORDS if w in text_lower)
-    positive = sum(1 for w in POSITIVE_KEYWORDS if w in text_lower)
-    return 'NEGATIVO' if negative > positive else ('POSITIVO' if positive > negative else 'NEUTRO')
-
 def save_results(results, summary):
     try:
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
@@ -150,25 +144,22 @@ def save_results(results, summary):
         logging.error(f"✗ Errore Excel: {e}")
 
 def send_email(summary):
+    """Invia email via Mailgun API con report e Excel allegato"""
     try:
-        sender = os.getenv('SENDER_EMAIL')
-        password = os.getenv('SENDER_PASSWORD')
+        api_key = os.getenv('MAILGUN_API_KEY')
+        domain = os.getenv('MAILGUN_DOMAIN')
         recipient = os.getenv('ALERT_EMAIL')
         
-        logging.info(f"Tentativo invio email...")
-        logging.info(f"Sender configurato: {sender is not None}")
-        logging.info(f"Password configurata: {password is not None}")
+        logging.info(f"Tentativo invio email via Mailgun API...")
+        logging.info(f"API Key configurata: {api_key is not None}")
+        logging.info(f"Domain configurato: {domain is not None}")
         logging.info(f"Recipient configurato: {recipient is not None}")
         
-        if not all([sender, password, recipient]):
-            logging.warning("❌ Email non configurata correttamente - skip invio")
+        if not all([api_key, domain, recipient]):
+            logging.warning("⚠ Mailgun non configurato correttamente - skip invio")
             return
         
-        msg = MIMEMultipart()
-        msg['From'] = sender
-        msg['To'] = recipient
-        msg['Subject'] = f"SERP Report - {datetime.now().strftime('%d/%m/%Y')}"
-        
+        # Costruisci HTML email
         html = "<html><body style='font-family: Arial, sans-serif;'>"
         html += "<h2>📊 Report SERP Monitoring</h2>"
         html += f"<p><em>Data: {datetime.now().strftime('%d/%m/%Y alle %H:%M')}</em></p>"
@@ -205,24 +196,37 @@ def send_email(summary):
         html += "<hr><p><strong>📎 Report completo con TUTTI i risultati nel file Excel allegato.</strong></p>"
         html += "</body></html>"
         
-        msg.attach(MIMEText(html, 'html'))
+        # Prepara richiesta Mailgun
+        url = f"https://api.mailgun.net/v3/{domain}/messages"
         
+        data = {
+            'from': f'SERP Monitor <mailgun@{domain}>',
+            'to': recipient,
+            'subject': f"SERP Report - {datetime.now().strftime('%d/%m/%Y')}",
+            'html': html
+        }
+        
+        files = []
         if EXCEL_FILE.exists():
-            with open(EXCEL_FILE, 'rb') as f:
-                attach = MIMEApplication(f.read(), _subtype='xlsx')
-                attach.add_header('Content-Disposition', 'attachment', filename=EXCEL_FILE.name)
-                msg.attach(attach)
+            files = [('attachment', (EXCEL_FILE.name, open(EXCEL_FILE, 'rb'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))]
             logging.info("Excel allegato aggiunto")
         
-        logging.info(f"Connessione SMTP a {os.getenv('SMTP_SERVER')}:{os.getenv('SMTP_PORT')}")
-        with smtplib.SMTP(os.getenv('SMTP_SERVER', 'smtp.mailgun.org'), 
-                         int(os.getenv('SMTP_PORT', 587))) as server:
-            server.starttls()
-            logging.info("TLS avviato")
-            server.login(sender, password)
-            logging.info("Login effettuato")
-            server.send_message(msg)
-            logging.info(f"✓ Email inviata con successo a {recipient}")
+        # Invia via Mailgun API
+        logging.info(f"Invio email a {recipient} via Mailgun...")
+        response = requests.post(
+            url,
+            auth=('api', api_key),
+            data=data,
+            files=files
+        )
+        
+        # Chiudi file se aperto
+        if files:
+            files[0][1][1].close()
+        
+        response.raise_for_status()
+        logging.info(f"✓ Email inviata con successo! Response: {response.json()}")
+        
     except Exception as e:
         logging.error(f"✗ Errore invio email: {e}")
         import traceback
@@ -238,7 +242,7 @@ def run_analysis(keywords, email, time_filter=None):
         analysis_status['current_keyword'] = keyword
         analysis_status['progress'] = int((idx / total) * 100)
         
-        google_results = search_google(keyword, num_results=50, time_filter=time_filter)  # Prendi 50 risultati
+        google_results = search_google(keyword, num_results=50, time_filter=time_filter)
         bing_results = search_bing(keyword, num_results=50, time_filter=time_filter)
         combined = google_results + bing_results
         
@@ -257,7 +261,7 @@ def run_analysis(keywords, email, time_filter=None):
     save_results(all_results, summary_data)
     if email:
         os.environ['ALERT_EMAIL'] = email
-        send_email(summary_data)  # Email con solo top 10
+        send_email(summary_data)
     
     analysis_status['running'] = False
     analysis_status['progress'] = 100
@@ -318,3 +322,4 @@ def download():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+    
