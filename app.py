@@ -44,68 +44,128 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-def search_google(keyword, num_results=10, time_filter=None):
+def search_google(keyword, num_results=30, time_filter=None):
+    """
+    Cerca su Google con paginazione per ottenere più di 10 risultati.
+    Google ora restituisce max 10 risultati per chiamata, quindi usiamo 'start' per paginare.
+    """
     serpapi_key = os.getenv('SERPAPI_KEY')
     if not serpapi_key:
         logging.error("SERPAPI_KEY non configurata!")
         return []
     
+    all_results = []
+    pages_needed = (num_results + 9) // 10  # Arrotonda per eccesso (30 risultati = 3 pagine)
+    
     try:
-        logging.info(f"🔍 Google: {keyword} (richiesti {num_results} risultati)")
-        params = {
-            'engine': 'google', 'q': keyword, 'num': num_results,
-            'hl': 'it', 'gl': 'it', 'api_key': serpapi_key
-        }
-        if time_filter == 'day': params['tbs'] = 'qdr:d'
-        elif time_filter == 'week': params['tbs'] = 'qdr:w'
-        elif time_filter == 'month': params['tbs'] = 'qdr:m'
+        logging.info(f"🔍 Google: {keyword} (target {num_results} risultati, {pages_needed} pagine)")
         
-        response = requests.get('https://serpapi.com/search', params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
+        for page in range(pages_needed):
+            start = page * 10
+            
+            params = {
+                'engine': 'google',
+                'q': keyword,
+                'start': start,
+                'num': 10,
+                'hl': 'it',
+                'gl': 'it',
+                'api_key': serpapi_key
+            }
+            
+            if time_filter == 'day': params['tbs'] = 'qdr:d'
+            elif time_filter == 'week': params['tbs'] = 'qdr:w'
+            elif time_filter == 'month': params['tbs'] = 'qdr:m'
+            
+            response = requests.get('https://serpapi.com/search', params=params, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+            
+            organic_results = data.get('organic_results', [])
+            
+            if not organic_results:
+                logging.info(f"  Pagina {page+1}: nessun risultato, stop paginazione")
+                break
+            
+            for idx, item in enumerate(organic_results, start + 1):
+                all_results.append({
+                    'position': idx,
+                    'title': item.get('title', 'N/A'),
+                    'url': item.get('link', 'N/A'),
+                    'snippet': item.get('snippet', ''),
+                    'source': 'Google'
+                })
+            
+            logging.info(f"  Pagina {page+1}: +{len(organic_results)} risultati")
+            
+            # Piccola pausa tra le richieste per non sovraccaricare l'API
+            if page < pages_needed - 1:
+                time.sleep(0.5)
         
-        results = []
-        for idx, item in enumerate(data.get('organic_results', [])[:num_results], 1):
-            results.append({
-                'position': idx, 'title': item.get('title', 'N/A'),
-                'url': item.get('link', 'N/A'), 'snippet': item.get('snippet', ''),
-                'source': 'Google'
-            })
-        logging.info(f"✓ {len(results)} risultati Google")
-        return results
+        logging.info(f"✓ Totale {len(all_results)} risultati Google")
+        return all_results[:num_results]  # Limita al numero richiesto
+        
     except Exception as e:
         logging.error(f"✗ Errore Google: {e}")
-        return []
+        return all_results  # Restituisci quello che hai raccolto finora
 
-def search_bing(keyword, num_results=10, time_filter=None):
+def search_bing(keyword, num_results=30, time_filter=None):
+    """
+    Cerca su Bing con paginazione.
+    Bing supporta 'offset' per la paginazione.
+    """
     serpapi_key = os.getenv('SERPAPI_KEY')
     if not serpapi_key:
         return []
     
+    all_results = []
+    pages_needed = (num_results + 9) // 10
+    
     try:
-        logging.info(f"🔍 Bing: {keyword} (richiesti {num_results} risultati)")
-        # Bing ha limite 50 via SerpAPI
-        num_results_bing = min(num_results, 50)
-        params = {
-            'engine': 'bing', 'q': keyword, 'count': num_results_bing,
-            'cc': 'it', 'api_key': serpapi_key
-        }
-        response = requests.get('https://serpapi.com/search', params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
+        logging.info(f"🔍 Bing: {keyword} (target {num_results} risultati, {pages_needed} pagine)")
         
-        results = []
-        for idx, item in enumerate(data.get('organic_results', [])[:num_results_bing], 1):
-            results.append({
-                'position': idx, 'title': item.get('title', 'N/A'),
-                'url': item.get('link', 'N/A'), 'snippet': item.get('snippet', ''),
-                'source': 'Bing'
-            })
-        logging.info(f"✓ {len(results)} risultati Bing")
-        return results
+        for page in range(pages_needed):
+            offset = page * 10
+            
+            params = {
+                'engine': 'bing',
+                'q': keyword,
+                'first': offset + 1,  # Bing usa 'first' (1-indexed)
+                'count': 10,
+                'cc': 'it',
+                'api_key': serpapi_key
+            }
+            
+            response = requests.get('https://serpapi.com/search', params=params, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+            
+            organic_results = data.get('organic_results', [])
+            
+            if not organic_results:
+                logging.info(f"  Pagina {page+1}: nessun risultato, stop paginazione")
+                break
+            
+            for idx, item in enumerate(organic_results, offset + 1):
+                all_results.append({
+                    'position': idx,
+                    'title': item.get('title', 'N/A'),
+                    'url': item.get('link', 'N/A'),
+                    'snippet': item.get('snippet', ''),
+                    'source': 'Bing'
+                })
+            
+            logging.info(f"  Pagina {page+1}: +{len(organic_results)} risultati")
+            
+            if page < pages_needed - 1:
+                time.sleep(0.5)
+        
+        logging.info(f"✓ Totale {len(all_results)} risultati Bing")
+        return all_results[:num_results]
+        
     except Exception as e:
         logging.error(f"✗ Errore Bing: {e}")
-        return []
+        return all_results
 
 def save_results(results, summary):
     try:
@@ -243,7 +303,7 @@ def send_email(summary, recipients):
         import traceback
         logging.error(traceback.format_exc())
 
-def run_analysis(keywords, emails, time_filter=None, num_results=50):
+def run_analysis(keywords, emails, time_filter=None, num_results=30):
     global analysis_status
     all_results = []
     summary_data = []
@@ -306,7 +366,7 @@ def analyze():
     keywords = data.get('keywords', [])
     emails = data.get('emails', '')
     time_filter = data.get('time_filter')
-    num_results = data.get('num_results', 50)
+    num_results = data.get('num_results', 30)
     
     if not keywords:
         return jsonify({'error': 'Nessuna keyword'}), 400
