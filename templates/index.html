@@ -84,7 +84,7 @@
             border-color: var(--primary-color);
         }
         
-        input[type="email"], select {
+        input[type="text"], select {
             width: 100%;
             padding: 15px;
             border: 2px solid var(--border-color);
@@ -95,7 +95,7 @@
             cursor: pointer;
         }
         
-        input[type="email"]:focus, select:focus {
+        input[type="text"]:focus, select:focus {
             outline: none;
             border-color: var(--primary-color);
         }
@@ -230,6 +230,18 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .info-box strong {
+            color: #1976d2;
+        }
     </style>
 </head>
 <body>
@@ -249,6 +261,16 @@
                     ></textarea>
                     <p class="hint">💡 Una keyword per riga. Verranno cercate su Google e Bing.</p>
                 </div>
+
+                <div class="form-group">
+                    <label for="numResults">Numero di risultati per motore</label>
+                    <select id="numResults">
+                        <option value="10">⚡ 10 risultati (veloce)</option>
+                        <option value="50" selected>⚖️ 50 risultati (bilanciato)</option>
+                        <option value="100">🎯 100 risultati (completo - solo Google)</option>
+                    </select>
+                    <p class="hint">📊 Bing ha un massimo di 50 risultati. Google supporta fino a 100.</p>
+                </div>
                 
                 <div class="form-group">
                     <label for="timeFilter">Periodo di ricerca</label>
@@ -262,13 +284,18 @@
                 </div>
                 
                 <div class="form-group">
-                    <label for="email">Email per ricevere i risultati (opzionale)</label>
+                    <label for="emails">Email per ricevere i risultati (opzionale)</label>
                     <input 
-                        type="email" 
-                        id="email" 
-                        placeholder="tuaemail@esempio.com"
+                        type="text" 
+                        id="emails" 
+                        placeholder="email1@esempio.com, email2@esempio.com, email3@esempio.com"
                     />
-                    <p class="hint">📧 Se inserita, riceverai l'email con i link alle notizie + Excel allegato</p>
+                    <p class="hint">📧 Puoi inserire più email separate da virgola. Riceverai l'email con i link alle notizie + Excel allegato</p>
+                </div>
+
+                <div class="info-box">
+                    <strong>⚠️ Importante per Piano Gratuito Mailgun:</strong><br>
+                    Ogni email deve essere verificata su Mailgun prima di ricevere report. Max 5 destinatari. Funziona con Gmail, Yahoo, Libero, etc.
                 </div>
                 
                 <button type="submit" class="btn" id="analyzeBtn">
@@ -306,8 +333,9 @@
             e.preventDefault();
             
             const keywordsText = document.getElementById('keywords').value.trim();
-            const email = document.getElementById('email').value.trim();
+            const emails = document.getElementById('emails').value.trim();
             const timeFilter = document.getElementById('timeFilter').value;
+            const numResults = parseInt(document.getElementById('numResults').value);
             
             if (!keywordsText) {
                 alert('Inserisci almeno una keyword!');
@@ -335,8 +363,9 @@
                     },
                     body: JSON.stringify({ 
                         keywords, 
-                        email,
-                        time_filter: timeFilter || null
+                        emails,
+                        time_filter: timeFilter || null,
+                        num_results: numResults
                     })
                 });
                 

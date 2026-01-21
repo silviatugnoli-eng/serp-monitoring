@@ -51,7 +51,7 @@ def search_google(keyword, num_results=10, time_filter=None):
         return []
     
     try:
-        logging.info(f"🔍 Google: {keyword}")
+        logging.info(f"🔍 Google: {keyword} (richiesti {num_results} risultati)")
         params = {
             'engine': 'google', 'q': keyword, 'num': num_results,
             'hl': 'it', 'gl': 'it', 'api_key': serpapi_key
@@ -83,9 +83,11 @@ def search_bing(keyword, num_results=10, time_filter=None):
         return []
     
     try:
-        logging.info(f"🔍 Bing: {keyword}")
+        logging.info(f"🔍 Bing: {keyword} (richiesti {num_results} risultati)")
+        # Bing ha limite 50 via SerpAPI
+        num_results_bing = min(num_results, 50)
         params = {
-            'engine': 'bing', 'q': keyword, 'count': num_results,
+            'engine': 'bing', 'q': keyword, 'count': num_results_bing,
             'cc': 'it', 'api_key': serpapi_key
         }
         response = requests.get('https://serpapi.com/search', params=params, timeout=15)
@@ -93,7 +95,7 @@ def search_bing(keyword, num_results=10, time_filter=None):
         data = response.json()
         
         results = []
-        for idx, item in enumerate(data.get('organic_results', [])[:num_results], 1):
+        for idx, item in enumerate(data.get('organic_results', [])[:num_results_bing], 1):
             results.append({
                 'position': idx, 'title': item.get('title', 'N/A'),
                 'url': item.get('link', 'N/A'), 'snippet': item.get('snippet', ''),
@@ -143,19 +145,28 @@ def save_results(results, summary):
     except Exception as e:
         logging.error(f"✗ Errore Excel: {e}")
 
-def send_email(summary):
-    """Invia email via Mailgun API con report e Excel allegato"""
+def send_email(summary, recipients):
+    """Invia email via Mailgun API a più destinatari con report e Excel allegato"""
     try:
         api_key = os.getenv('MAILGUN_API_KEY')
         domain = os.getenv('MAILGUN_DOMAIN')
-        recipient = os.getenv('ALERT_EMAIL')
+        
+        # Parse recipients (può essere stringa con virgole o lista)
+        if isinstance(recipients, str):
+            recipient_list = [email.strip() for email in recipients.split(',') if email.strip()]
+        else:
+            recipient_list = recipients
+        
+        if not recipient_list:
+            logging.warning("⚠ Nessun destinatario specificato - skip invio")
+            return
         
         logging.info(f"Tentativo invio email via Mailgun API...")
         logging.info(f"API Key configurata: {api_key is not None}")
         logging.info(f"Domain configurato: {domain is not None}")
-        logging.info(f"Recipient configurato: {recipient is not None}")
+        logging.info(f"Destinatari: {', '.join(recipient_list)}")
         
-        if not all([api_key, domain, recipient]):
+        if not all([api_key, domain]):
             logging.warning("⚠ Mailgun non configurato correttamente - skip invio")
             return
         
@@ -196,12 +207,12 @@ def send_email(summary):
         html += "<hr><p><strong>📎 Report completo con TUTTI i risultati nel file Excel allegato.</strong></p>"
         html += "</body></html>"
         
-        # Prepara richiesta Mailgun
+        # Prepara richiesta Mailgun (invia a tutti i destinatari insieme)
         url = f"https://api.mailgun.net/v3/{domain}/messages"
         
         data = {
             'from': f'SERP Monitor <mailgun@{domain}>',
-            'to': recipient,
+            'to': recipient_list,  # Lista di email
             'subject': f"SERP Report - {datetime.now().strftime('%d/%m/%Y')}",
             'html': html
         }
@@ -212,7 +223,7 @@ def send_email(summary):
             logging.info("Excel allegato aggiunto")
         
         # Invia via Mailgun API
-        logging.info(f"Invio email a {recipient} via Mailgun...")
+        logging.info(f"Invio email a {len(recipient_list)} destinatari via Mailgun...")
         response = requests.post(
             url,
             auth=('api', api_key),
@@ -232,7 +243,7 @@ def send_email(summary):
         import traceback
         logging.error(traceback.format_exc())
 
-def run_analysis(keywords, email, time_filter=None):
+def run_analysis(keywords, emails, time_filter=None, num_results=50):
     global analysis_status
     all_results = []
     summary_data = []
@@ -242,8 +253,8 @@ def run_analysis(keywords, email, time_filter=None):
         analysis_status['current_keyword'] = keyword
         analysis_status['progress'] = int((idx / total) * 100)
         
-        google_results = search_google(keyword, num_results=50, time_filter=time_filter)
-        bing_results = search_bing(keyword, num_results=50, time_filter=time_filter)
+        google_results = search_google(keyword, num_results=num_results, time_filter=time_filter)
+        bing_results = search_bing(keyword, num_results=num_results, time_filter=time_filter)
         combined = google_results + bing_results
         
         for r in combined:
@@ -259,9 +270,8 @@ def run_analysis(keywords, email, time_filter=None):
         analysis_status['results'].append(summary_data[-1])
     
     save_results(all_results, summary_data)
-    if email:
-        os.environ['ALERT_EMAIL'] = email
-        send_email(summary_data)
+    if emails:
+        send_email(summary_data, emails)
     
     analysis_status['running'] = False
     analysis_status['progress'] = 100
@@ -294,14 +304,15 @@ def analyze():
     
     data = request.json
     keywords = data.get('keywords', [])
-    email = data.get('email', '')
+    emails = data.get('emails', '')
     time_filter = data.get('time_filter')
+    num_results = data.get('num_results', 50)
     
     if not keywords:
         return jsonify({'error': 'Nessuna keyword'}), 400
     
     analysis_status = {'running': True, 'progress': 0, 'current_keyword': '', 'results': []}
-    thread = threading.Thread(target=run_analysis, args=(keywords, email, time_filter))
+    thread = threading.Thread(target=run_analysis, args=(keywords, emails, time_filter, num_results))
     thread.daemon = True
     thread.start()
     return jsonify({'status': 'started'})
@@ -322,4 +333,3 @@ def download():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-    
