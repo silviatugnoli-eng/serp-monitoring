@@ -194,7 +194,63 @@ def search_bing(keyword, num_results=30, time_filter=None, sites=None):
         logging.error(f"✗ Errore Bing: {e}")
         return all_results
 
-def save_results(results, summary):
+def search_google_images(keyword, num_results=30, sites=None):
+    """
+    Cerca immagini su Google Images.
+    
+    Args:
+        keyword: La keyword da cercare
+        num_results: Numero di immagini desiderate (max 100)
+        sites: Lista di domini per limitare la ricerca
+    """
+    serpapi_key = os.getenv('SERPAPI_KEY')
+    if not serpapi_key:
+        return []
+    
+    # Costruisci query con filtro siti
+    query = keyword
+    if sites and len(sites) > 0:
+        site_filter = ' OR '.join([f'site:{site.strip()}' for site in sites])
+        query = f'{keyword} ({site_filter})'
+    
+    all_results = []
+    
+    try:
+        logging.info(f"🖼️  Google Images: {keyword} (target {num_results} risultati)")
+        
+        params = {
+            'engine': 'google_images',
+            'q': query,
+            'num': num_results,
+            'hl': 'it',
+            'gl': 'it',
+            'api_key': serpapi_key
+        }
+        
+        response = requests.get('https://serpapi.com/search', params=params, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        
+        images = data.get('images_results', [])
+        
+        for idx, item in enumerate(images[:num_results], 1):
+            all_results.append({
+                'position': idx,
+                'title': item.get('title', 'N/A'),
+                'url': item.get('link', 'N/A'),
+                'thumbnail': item.get('thumbnail', 'N/A'),
+                'source_url': item.get('source', 'N/A'),
+                'source': 'Google Images'
+            })
+        
+        logging.info(f"✓ {len(all_results)} immagini trovate")
+        return all_results
+        
+    except Exception as e:
+        logging.error(f"✗ Errore Google Images: {e}")
+        return []
+
+def save_results(results, summary, image_results=None):
     try:
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
             # Foglio 1 - Ordinato per Keyword, poi Source (Google prima di Bing), poi Posizione
@@ -219,23 +275,39 @@ def save_results(results, summary):
                 df_sum = pd.DataFrame(columns=['Keyword', 'Risultati Google', 'Risultati Bing', 'Timestamp'])
             df_sum.to_excel(writer, sheet_name='Summary', index=False)
             
-            # Foglio 3
+            # Foglio 3 - Google Immagini (se presente)
+            if image_results and len(image_results) > 0:
+                df_img = pd.DataFrame(image_results)
+                df_img = df_img[['keyword', 'position', 'title', 'url', 'thumbnail', 'source_url', 'timestamp']]
+                df_img.columns = ['Keyword', 'Posizione', 'Titolo', 'URL Immagine', 'Thumbnail', 'Fonte', 'Timestamp']
+                df_img = df_img.sort_values(['Keyword', 'Posizione'])
+                df_img.to_excel(writer, sheet_name='Google Immagini', index=False)
+            
+            # Foglio 4 - Statistiche
             total_g = sum(s['Risultati Google'] for s in summary) if summary else 0
             total_b = sum(s['Risultati Bing'] for s in summary) if summary else 0
             avg_pos = sum(r['position'] for r in results) / len(results) if results else 0
+            total_images = len(image_results) if image_results else 0
+            
+            metrics = ['Keywords Totali', 'Notizie Google raccolte', 'Notizie Bing raccolte', 
+                      'Posizione media SERP', 'Ultima Analisi']
+            values = [len(summary) if summary else 0, total_g, total_b, f"{avg_pos:.1f}", 
+                     datetime.now().isoformat()]
+            
+            if total_images > 0:
+                metrics.append('Immagini Google raccolte')
+                values.append(total_images)
             
             df_stats = pd.DataFrame({
-                'Metrica': ['Keywords Totali', 'Notizie Google raccolte', 'Notizie Bing raccolte', 
-                           'Posizione media SERP', 'Ultima Analisi'],
-                'Valore': [len(summary) if summary else 0, total_g, total_b, f"{avg_pos:.1f}", 
-                          datetime.now().isoformat()]
+                'Metrica': metrics,
+                'Valore': values
             })
             df_stats.to_excel(writer, sheet_name='Statistiche', index=False)
         logging.info("✓ Excel salvato")
     except Exception as e:
         logging.error(f"✗ Errore Excel: {e}")
 
-def send_email(summary, recipients):
+def send_email(summary, recipients, image_summary=None):
     """Invia email via Mailgun API a più destinatari con report e Excel allegato"""
     try:
         api_key = os.getenv('MAILGUN_API_KEY')
@@ -294,6 +366,23 @@ def send_email(summary, recipients):
                 if total_bing > 10:
                     html += f"<p><em>... e altri {total_bing - 10} risultati (vedi Excel)</em></p>"
         
+        # Sezione immagini (se presente)
+        if image_summary and len(image_summary) > 0:
+            html += "<hr><h2>🖼️ Google Immagini</h2>"
+            for item in image_summary:
+                keyword = item['keyword']
+                images = item['images']
+                html += f"<h3>🔑 Keyword: {keyword}</h3>"
+                html += f"<p><strong>Immagini trovate:</strong> {len(images)}</p>"
+                if len(images) > 0:
+                    html += "<div style='display: flex; flex-wrap: wrap; gap: 10px;'>"
+                    for img in images[:6]:  # Mostra prime 6 immagini
+                        if img['thumbnail'] != 'N/A':
+                            html += f'<div style="width: 150px;"><a href="{img["url"]}"><img src="{img["thumbnail"]}" style="width: 100%; border-radius: 5px;"></a><p style="font-size: 0.8em; margin: 5px 0;">{img["title"][:50]}...</p></div>'
+                    html += "</div>"
+                    if len(images) > 6:
+                        html += f"<p><em>... e altre {len(images) - 6} immagini (vedi Excel)</em></p>"
+        
         html += "<hr><p><strong>📎 Report completo con TUTTI i risultati nel file Excel allegato.</strong></p>"
         html += "</body></html>"
         
@@ -333,10 +422,12 @@ def send_email(summary, recipients):
         import traceback
         logging.error(traceback.format_exc())
 
-def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None):
+def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None, include_images=False):
     global analysis_status
     all_results = []
+    all_images = []
     summary_data = []
+    image_summary = []
     total = len(keywords)
     
     for idx, keyword in enumerate(keywords, 1):
@@ -358,10 +449,22 @@ def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None)
             'google_results': google_results, 'bing_results': bing_results
         })
         analysis_status['results'].append(summary_data[-1])
+        
+        # Cerca immagini se richiesto
+        if include_images:
+            image_results = search_google_images(keyword, num_results=num_results, sites=sites)
+            for img in image_results:
+                img['keyword'] = keyword
+                img['timestamp'] = datetime.now().isoformat()
+            all_images.extend(image_results)
+            image_summary.append({
+                'keyword': keyword,
+                'images': image_results
+            })
     
-    save_results(all_results, summary_data)
+    save_results(all_results, summary_data, all_images if include_images else None)
     if emails:
-        send_email(summary_data, emails)
+        send_email(summary_data, emails, image_summary if include_images else None)
     
     analysis_status['running'] = False
     analysis_status['progress'] = 100
@@ -398,12 +501,13 @@ def analyze():
     time_filter = data.get('time_filter')
     num_results = data.get('num_results', 30)
     sites = data.get('sites', [])
+    include_images = data.get('include_images', False)
     
     if not keywords:
         return jsonify({'error': 'Nessuna keyword'}), 400
     
     analysis_status = {'running': True, 'progress': 0, 'current_keyword': '', 'results': []}
-    thread = threading.Thread(target=run_analysis, args=(keywords, emails, time_filter, num_results, sites))
+    thread = threading.Thread(target=run_analysis, args=(keywords, emails, time_filter, num_results, sites, include_images))
     thread.daemon = True
     thread.start()
     return jsonify({'status': 'started'})
