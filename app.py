@@ -44,15 +44,29 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-def search_google(keyword, num_results=30, time_filter=None):
+def search_google(keyword, num_results=30, time_filter=None, sites=None):
     """
     Cerca su Google con paginazione per ottenere più di 10 risultati.
     Google ora restituisce max 10 risultati per chiamata, quindi usiamo 'start' per paginare.
+    
+    Args:
+        keyword: La keyword da cercare
+        num_results: Numero totale di risultati desiderati
+        time_filter: Filtro temporale (day, week, month)
+        sites: Lista di domini per limitare la ricerca (es: ['corriere.it', 'repubblica.it'])
     """
     serpapi_key = os.getenv('SERPAPI_KEY')
     if not serpapi_key:
         logging.error("SERPAPI_KEY non configurata!")
         return []
+    
+    # Costruisci query con filtro siti se specificato
+    query = keyword
+    if sites and len(sites) > 0:
+        # Crea filtro tipo: (site:corriere.it OR site:repubblica.it OR site:ilpost.it)
+        site_filter = ' OR '.join([f'site:{site.strip()}' for site in sites])
+        query = f'{keyword} ({site_filter})'
+        logging.info(f"   Filtro siti applicato: {len(sites)} domini")
     
     all_results = []
     pages_needed = (num_results + 9) // 10  # Arrotonda per eccesso (30 risultati = 3 pagine)
@@ -65,7 +79,7 @@ def search_google(keyword, num_results=30, time_filter=None):
             
             params = {
                 'engine': 'google',
-                'q': keyword,
+                'q': query,  # Usa query modificata con site: filter
                 'start': start,
                 'num': 10,
                 'hl': 'it',
@@ -109,14 +123,27 @@ def search_google(keyword, num_results=30, time_filter=None):
         logging.error(f"✗ Errore Google: {e}")
         return all_results  # Restituisci quello che hai raccolto finora
 
-def search_bing(keyword, num_results=30, time_filter=None):
+def search_bing(keyword, num_results=30, time_filter=None, sites=None):
     """
     Cerca su Bing con paginazione.
     Bing supporta 'offset' per la paginazione.
+    
+    Args:
+        keyword: La keyword da cercare
+        num_results: Numero totale di risultati desiderati
+        time_filter: Filtro temporale (non supportato da Bing)
+        sites: Lista di domini per limitare la ricerca
     """
     serpapi_key = os.getenv('SERPAPI_KEY')
     if not serpapi_key:
         return []
+    
+    # Costruisci query con filtro siti se specificato
+    query = keyword
+    if sites and len(sites) > 0:
+        site_filter = ' OR '.join([f'site:{site.strip()}' for site in sites])
+        query = f'{keyword} ({site_filter})'
+        logging.info(f"   Filtro siti applicato: {len(sites)} domini")
     
     all_results = []
     pages_needed = (num_results + 9) // 10
@@ -129,7 +156,7 @@ def search_bing(keyword, num_results=30, time_filter=None):
             
             params = {
                 'engine': 'bing',
-                'q': keyword,
+                'q': query,  # Usa query modificata con site: filter
                 'first': offset + 1,  # Bing usa 'first' (1-indexed)
                 'count': 10,
                 'cc': 'it',
@@ -306,7 +333,7 @@ def send_email(summary, recipients):
         import traceback
         logging.error(traceback.format_exc())
 
-def run_analysis(keywords, emails, time_filter=None, num_results=30):
+def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None):
     global analysis_status
     all_results = []
     summary_data = []
@@ -316,8 +343,8 @@ def run_analysis(keywords, emails, time_filter=None, num_results=30):
         analysis_status['current_keyword'] = keyword
         analysis_status['progress'] = int((idx / total) * 100)
         
-        google_results = search_google(keyword, num_results=num_results, time_filter=time_filter)
-        bing_results = search_bing(keyword, num_results=num_results, time_filter=time_filter)
+        google_results = search_google(keyword, num_results=num_results, time_filter=time_filter, sites=sites)
+        bing_results = search_bing(keyword, num_results=num_results, time_filter=time_filter, sites=sites)
         combined = google_results + bing_results
         
         for r in combined:
@@ -370,12 +397,13 @@ def analyze():
     emails = data.get('emails', '')
     time_filter = data.get('time_filter')
     num_results = data.get('num_results', 30)
+    sites = data.get('sites', [])
     
     if not keywords:
         return jsonify({'error': 'Nessuna keyword'}), 400
     
     analysis_status = {'running': True, 'progress': 0, 'current_keyword': '', 'results': []}
-    thread = threading.Thread(target=run_analysis, args=(keywords, emails, time_filter, num_results))
+    thread = threading.Thread(target=run_analysis, args=(keywords, emails, time_filter, num_results, sites))
     thread.daemon = True
     thread.start()
     return jsonify({'status': 'started'})
