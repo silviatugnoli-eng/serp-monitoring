@@ -263,7 +263,108 @@ def search_google_images(keyword, num_results=30, sites=None):
         logging.error(f"✗ Errore Google Images: {e}")
         return []
 
-def save_results(results, summary, image_results=None):
+def get_ai_overview(keyword, sites=None):
+    """
+    Estrae AI Overview da Google (risposta AI in alto nei risultati).
+    
+    Args:
+        keyword: La keyword da cercare
+        sites: Lista di domini per limitare la ricerca
+    """
+    serpapi_key = os.getenv('SERPAPI_KEY')
+    if not serpapi_key:
+        return None
+    
+    # Costruisci query con filtro siti
+    query = keyword
+    if sites and len(sites) > 0:
+        site_filter = ' OR '.join([f'site:{site.strip()}' for site in sites])
+        query = f'{keyword} ({site_filter})'
+    
+    try:
+        logging.info(f"✨ Google AI Overview: {keyword}")
+        
+        params = {
+            'engine': 'google',
+            'q': query,
+            'hl': 'it',
+            'gl': 'it',
+            'api_key': serpapi_key
+        }
+        
+        response = requests.get('https://serpapi.com/search', params=params, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Estrai AI Overview se presente
+        ai_overview = data.get('ai_overview')
+        
+        if ai_overview:
+            text = ai_overview.get('text', '')
+            sources = ai_overview.get('sources', [])
+            logging.info(f"✓ AI Overview trovato ({len(text)} caratteri)")
+            return {
+                'text': text,
+                'sources': sources
+            }
+        else:
+            logging.info("  Nessun AI Overview disponibile")
+            return None
+        
+    except Exception as e:
+        logging.error(f"✗ Errore AI Overview: {e}")
+        return None
+
+def get_bing_chat(keyword, sites=None):
+    """
+    Ottiene risposta conversazionale da Bing Chat (powered by GPT-4).
+    
+    Args:
+        keyword: La keyword da cercare
+        sites: Lista di domini per limitare la ricerca
+    """
+    serpapi_key = os.getenv('SERPAPI_KEY')
+    if not serpapi_key:
+        return None
+    
+    # Costruisci query con filtro siti
+    query = keyword
+    if sites and len(sites) > 0:
+        site_filter = ' OR '.join([f'site:{site.strip()}' for site in sites])
+        query = f'{keyword} ({site_filter})'
+    
+    try:
+        logging.info(f"🤖 Bing Chat: {keyword}")
+        
+        params = {
+            'engine': 'bing_chat',
+            'q': query,
+            'api_key': serpapi_key
+        }
+        
+        response = requests.get('https://serpapi.com/search', params=params, timeout=20)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Estrai risposta conversazionale
+        answer = data.get('answer', '')
+        sources = data.get('organic_results', [])
+        
+        if answer:
+            logging.info(f"✓ Bing Chat risposta ({len(answer)} caratteri)")
+            return {
+                'text': answer,
+                'sources': [{'title': s.get('title', ''), 'url': s.get('link', '')} for s in sources[:5]]
+            }
+        else:
+            logging.info("  Nessuna risposta Bing Chat")
+            return None
+        
+    except Exception as e:
+        logging.error(f"✗ Errore Bing Chat: {e}")
+        return None
+
+def save_results(results, summary, image_results=None, ai_results=None):
     try:
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
             # Foglio 1 - Con Data Pubblicazione e ordinamento cronologico
@@ -273,12 +374,10 @@ def save_results(results, summary, image_results=None):
                 df.columns = ['Keyword', 'Motore', 'Posizione', 'Titolo', 'URL', 'Snippet', 'Data Pubblicazione', 'Timestamp']
                 
                 # Ordina per: Keyword, poi Data (più recente prima), poi Motore (Google prima di Bing)
-                # Converti date in datetime per ordinamento corretto
                 def parse_date(date_str):
                     if date_str == 'N/A' or not date_str:
-                        return pd.Timestamp('1900-01-01')  # Date N/A vanno alla fine
+                        return pd.Timestamp('1900-01-01')
                     try:
-                        # SerpAPI restituisce date in vari formati, prova a parsare
                         return pd.to_datetime(date_str, errors='coerce')
                     except:
                         return pd.Timestamp('1900-01-01')
@@ -286,14 +385,13 @@ def save_results(results, summary, image_results=None):
                 df['_date_sort'] = df['Data Pubblicazione'].apply(parse_date)
                 df['_source_sort'] = df['Motore'].map({'Google': 0, 'Bing': 1})
                 
-                # Ordina: prima per Keyword, poi per Data (DESC = più recente prima), poi per Motore
                 df = df.sort_values(['Keyword', '_date_sort', '_source_sort'], ascending=[True, False, True])
                 df = df.drop(['_date_sort', '_source_sort'], axis=1)
             else:
                 df = pd.DataFrame(columns=['Keyword', 'Motore', 'Posizione', 'Titolo', 'URL', 'Snippet', 'Data Pubblicazione', 'Timestamp'])
             df.to_excel(writer, sheet_name='Dettaglio SERP', index=False)
             
-            # Foglio 2
+            # Foglio 2 - Summary
             if summary:
                 df_sum = pd.DataFrame([{
                     'Keyword': s['Keyword'], 'Risultati Google': s['Risultati Google'],
@@ -311,11 +409,35 @@ def save_results(results, summary, image_results=None):
                 df_img = df_img.sort_values(['Keyword', 'Posizione'])
                 df_img.to_excel(writer, sheet_name='Google Immagini', index=False)
             
-            # Foglio 4 - Statistiche
+            # Foglio 4 - Risposte AI (se presente)
+            if ai_results and len(ai_results) > 0:
+                ai_data = []
+                for item in ai_results:
+                    ai_data.append({
+                        'Keyword': item['keyword'],
+                        'Tipo AI': 'Google AI Overview',
+                        'Risposta': item.get('ai_overview_text', 'N/A'),
+                        'Fonti': ', '.join([s.get('title', '') for s in item.get('ai_overview_sources', [])[:3]]) if item.get('ai_overview_sources') else 'N/A',
+                        'Timestamp': item['timestamp']
+                    })
+                    if item.get('bing_chat_text'):
+                        ai_data.append({
+                            'Keyword': item['keyword'],
+                            'Tipo AI': 'Bing Chat (GPT-4)',
+                            'Risposta': item.get('bing_chat_text', 'N/A'),
+                            'Fonti': ', '.join([s.get('title', '') for s in item.get('bing_chat_sources', [])[:3]]) if item.get('bing_chat_sources') else 'N/A',
+                            'Timestamp': item['timestamp']
+                        })
+                
+                df_ai = pd.DataFrame(ai_data)
+                df_ai.to_excel(writer, sheet_name='Risposte AI', index=False)
+            
+            # Foglio Statistiche (ultimo)
             total_g = sum(s['Risultati Google'] for s in summary) if summary else 0
             total_b = sum(s['Risultati Bing'] for s in summary) if summary else 0
             avg_pos = sum(r['position'] for r in results) / len(results) if results else 0
             total_images = len(image_results) if image_results else 0
+            total_ai = len(ai_results) if ai_results else 0
             
             metrics = ['Keywords Totali', 'Notizie Google raccolte', 'Notizie Bing raccolte', 
                       'Posizione media SERP', 'Ultima Analisi']
@@ -326,6 +448,10 @@ def save_results(results, summary, image_results=None):
                 metrics.append('Immagini Google raccolte')
                 values.append(total_images)
             
+            if total_ai > 0:
+                metrics.append('Risposte AI raccolte')
+                values.append(total_ai)
+            
             df_stats = pd.DataFrame({
                 'Metrica': metrics,
                 'Valore': values
@@ -335,7 +461,7 @@ def save_results(results, summary, image_results=None):
     except Exception as e:
         logging.error(f"✗ Errore Excel: {e}")
 
-def send_email(summary, recipients, image_summary=None):
+def send_email(summary, recipients, image_summary=None, ai_summary=None):
     """Invia email via Mailgun API a più destinatari con report e Excel allegato"""
     try:
         api_key = os.getenv('MAILGUN_API_KEY')
@@ -418,12 +544,47 @@ def send_email(summary, recipients, image_summary=None):
                 html += f"<p><strong>Immagini trovate:</strong> {len(images)}</p>"
                 if len(images) > 0:
                     html += "<div style='display: flex; flex-wrap: wrap; gap: 10px;'>"
-                    for img in images[:6]:  # Mostra prime 6 immagini
+                    for img in images[:6]:
                         if img['thumbnail'] != 'N/A':
                             html += f'<div style="width: 150px;"><a href="{img["url"]}"><img src="{img["thumbnail"]}" style="width: 100%; border-radius: 5px;"></a><p style="font-size: 0.8em; margin: 5px 0;">{img["title"][:50]}...</p></div>'
                     html += "</div>"
                     if len(images) > 6:
                         html += f"<p><em>... e altre {len(images) - 6} immagini (vedi Excel)</em></p>"
+        
+        # Sezione AI (se presente)
+        if ai_summary and len(ai_summary) > 0:
+            html += "<hr><h2>🤖 Risposte AI</h2>"
+            for item in ai_summary:
+                keyword = item['keyword']
+                html += f"<h3>🔑 Keyword: {keyword}</h3>"
+                
+                # AI Overview
+                if item.get('ai_overview_text'):
+                    html += "<div style='background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 10px 0;'>"
+                    html += "<h4 style='color: #1976d2; margin: 0 0 10px 0;'>✨ Google AI Overview</h4>"
+                    ai_text = item['ai_overview_text'][:500]
+                    if len(item['ai_overview_text']) > 500:
+                        ai_text += "..."
+                    html += f"<p style='margin: 0;'>{ai_text}</p>"
+                    if item.get('ai_overview_sources'):
+                        html += "<p style='margin: 10px 0 0 0; font-size: 0.9em;'><strong>Fonti:</strong> "
+                        html += ", ".join([f"<a href='{s.get('link', '#')}'>{s.get('title', 'N/A')}</a>" for s in item['ai_overview_sources'][:3]])
+                        html += "</p>"
+                    html += "</div>"
+                
+                # Bing Chat
+                if item.get('bing_chat_text'):
+                    html += "<div style='background: #fff3e0; padding: 15px; border-radius: 8px; margin: 10px 0;'>"
+                    html += "<h4 style='color: #f57c00; margin: 0 0 10px 0;'>🤖 Bing Chat (GPT-4)</h4>"
+                    chat_text = item['bing_chat_text'][:500]
+                    if len(item['bing_chat_text']) > 500:
+                        chat_text += "..."
+                    html += f"<p style='margin: 0;'>{chat_text}</p>"
+                    if item.get('bing_chat_sources'):
+                        html += "<p style='margin: 10px 0 0 0; font-size: 0.9em;'><strong>Fonti:</strong> "
+                        html += ", ".join([f"<a href='{s.get('url', '#')}'>{s.get('title', 'N/A')}</a>" for s in item['bing_chat_sources'][:3]])
+                        html += "</p>"
+                    html += "</div>"
         
         html += "<hr><p><strong>📎 Report completo con TUTTI i risultati nel file Excel allegato.</strong></p>"
         html += "</body></html>"
@@ -464,12 +625,14 @@ def send_email(summary, recipients, image_summary=None):
         import traceback
         logging.error(traceback.format_exc())
 
-def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None, include_images=False):
+def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None, include_images=False, include_ai=False):
     global analysis_status
     all_results = []
     all_images = []
+    all_ai = []
     summary_data = []
     image_summary = []
+    ai_summary = []
     total = len(keywords)
     
     for idx, keyword in enumerate(keywords, 1):
@@ -503,10 +666,32 @@ def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None,
                 'keyword': keyword,
                 'images': image_results
             })
+        
+        # Cerca risposte AI se richiesto
+        if include_ai:
+            ai_overview = get_ai_overview(keyword, sites=sites)
+            bing_chat = get_bing_chat(keyword, sites=sites)
+            
+            ai_item = {
+                'keyword': keyword,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            if ai_overview:
+                ai_item['ai_overview_text'] = ai_overview['text']
+                ai_item['ai_overview_sources'] = ai_overview['sources']
+            
+            if bing_chat:
+                ai_item['bing_chat_text'] = bing_chat['text']
+                ai_item['bing_chat_sources'] = bing_chat['sources']
+            
+            if ai_overview or bing_chat:
+                all_ai.append(ai_item)
+                ai_summary.append(ai_item)
     
-    save_results(all_results, summary_data, all_images if include_images else None)
+    save_results(all_results, summary_data, all_images if include_images else None, all_ai if include_ai else None)
     if emails:
-        send_email(summary_data, emails, image_summary if include_images else None)
+        send_email(summary_data, emails, image_summary if include_images else None, ai_summary if include_ai else None)
     
     analysis_status['running'] = False
     analysis_status['progress'] = 100
@@ -544,12 +729,13 @@ def analyze():
     num_results = data.get('num_results', 30)
     sites = data.get('sites', [])
     include_images = data.get('include_images', False)
+    include_ai = data.get('include_ai', False)
     
     if not keywords:
         return jsonify({'error': 'Nessuna keyword'}), 400
     
     analysis_status = {'running': True, 'progress': 0, 'current_keyword': '', 'results': []}
-    thread = threading.Thread(target=run_analysis, args=(keywords, emails, time_filter, num_results, sites, include_images))
+    thread = threading.Thread(target=run_analysis, args=(keywords, emails, time_filter, num_results, sites, include_images, include_ai))
     thread.daemon = True
     thread.start()
     return jsonify({'status': 'started'})
