@@ -310,6 +310,12 @@
                 </div>
             </div>
             
+            <div id="downloadSection" style="display: none; text-align: center; margin-top: 30px;">
+                <button onclick="downloadExcel()" class="btn" style="width: 100%; padding: 15px; background: var(--accent-color);">
+                    📥 Scarica Ultimo Report Excel
+                </button>
+            </div>
+            
             <div class="results" id="results">
                 <h2 style="margin-bottom: 20px; color: #333;">📊 Risultati</h2>
                 <div id="resultsList"></div>
@@ -328,6 +334,7 @@
         const currentKeyword = document.getElementById('currentKeyword');
         const results = document.getElementById('results');
         const resultsList = document.getElementById('resultsList');
+        const downloadSection = document.getElementById('downloadSection');
         
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -353,6 +360,7 @@
             analyzeBtn.disabled = true;
             analyzeBtn.innerHTML = '<span class="spinner"></span> Analisi in corso...';
             progressContainer.style.display = 'block';
+            downloadSection.style.display = 'none';
             results.style.display = 'none';
             
             try {
@@ -401,6 +409,7 @@
                     } else {
                         // Analisi completata
                         displayResults(status.results);
+                        downloadSection.style.display = 'block';
                         resetUI();
                     }
                 } catch (error) {
@@ -442,8 +451,17 @@
             analyzeBtn.textContent = 'Avvia Analisi';
         }
         
-        function downloadExcel() {
-            window.location.href = '/download';
+        async function downloadExcel() {
+            try {
+                const response = await fetch('/download');
+                if (response.ok) {
+                    window.location.href = '/download';
+                } else {
+                    alert('⚠️ Nessun report disponibile. Esegui prima un\'analisi!');
+                }
+            } catch (error) {
+                alert('⚠️ Nessun report disponibile. Esegui prima un\'analisi!');
+            }
         }
     </script>
 </body>
