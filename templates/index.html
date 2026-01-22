@@ -7,8 +7,8 @@
     <style>
         /* COLORI PERSONALIZZABILI - Modifica questi valori */
         :root {
-            --primary-color: #a4404e;
-            --secondary-color: #374c6f
+           --primary-color: #a4404e;
+            --secondary-color: #26406b;
             --accent-color: #cc9a65;
             --text-color: #333;
             --bg-light: #f8f9fa;
@@ -336,7 +336,11 @@
                 </div>
             </div>
             
-            
+            <div id="downloadSection" style="display: none; text-align: center; margin-top: 30px;">
+                <button onclick="downloadExcel()" class="btn" style="width: 100%; padding: 15px; background: var(--accent-color);">
+                    📥 Scarica Ultimo Report Excel
+                </button>
+            </div>
             
             <div class="results" id="results">
                 <h2 style="margin-bottom: 20px; color: #333;">📊 Risultati</h2>
