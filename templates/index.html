@@ -281,6 +281,14 @@
                     </select>
                     <p class="hint">📊 Google ha cambiato le regole: max 10 risultati per pagina. Usiamo la paginazione per ottenere più risultati.</p>
                 </div>
+
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="includeImages" style="width: auto; margin-right: 10px; cursor: pointer;">
+                        <span>🖼️ Includi ricerca Google Immagini</span>
+                    </label>
+                    <p class="hint">📸 Se attivato, cercherà anche immagini su Google. I risultati andranno in un foglio Excel separato.</p>
+                </div>
                 
                 <div class="form-group">
                     <label for="timeFilter">Periodo di ricerca</label>
@@ -354,6 +362,7 @@
             const emails = document.getElementById('emails').value.trim();
             const timeFilter = document.getElementById('timeFilter').value;
             const numResults = parseInt(document.getElementById('numResults').value);
+            const includeImages = document.getElementById('includeImages').checked;
             
             if (!keywordsText) {
                 alert('Inserisci almeno una keyword!');
@@ -386,7 +395,8 @@
                         sites,
                         emails,
                         time_filter: timeFilter || null,
-                        num_results: numResults
+                        num_results: numResults,
+                        include_images: includeImages
                     })
                 });
                 
