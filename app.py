@@ -170,11 +170,14 @@ def search_bing(keyword, num_results=30, time_filter=None):
 def save_results(results, summary):
     try:
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
-            # Foglio 1
+            # Foglio 1 - Ordinato per Keyword, poi Source (Google prima di Bing), poi Posizione
             if results:
                 df = pd.DataFrame(results)
                 df = df[['keyword', 'source', 'position', 'title', 'url', 'snippet', 'timestamp']]
                 df.columns = ['Keyword', 'Motore', 'Posizione', 'Titolo', 'URL', 'Snippet', 'Timestamp']
+                # Ordina: prima per Keyword, poi Google prima di Bing, poi per Posizione
+                df['_sort_order'] = df['Motore'].map({'Google': 0, 'Bing': 1})
+                df = df.sort_values(['Keyword', '_sort_order', 'Posizione']).drop('_sort_order', axis=1)
             else:
                 df = pd.DataFrame(columns=['Keyword', 'Motore', 'Posizione', 'Titolo', 'URL', 'Snippet', 'Timestamp'])
             df.to_excel(writer, sheet_name='Dettaglio SERP', index=False)
