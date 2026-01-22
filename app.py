@@ -102,11 +102,18 @@ def search_google(keyword, num_results=30, time_filter=None, sites=None):
                 break
             
             for idx, item in enumerate(organic_results, start + 1):
+                # Estrai data di pubblicazione se disponibile
+                pub_date = item.get('date', '')
+                if not pub_date:
+                    # Prova con altri possibili campi
+                    pub_date = item.get('snippet_highlighted_words', {}).get('date', '')
+                
                 all_results.append({
                     'position': idx,
                     'title': item.get('title', 'N/A'),
                     'url': item.get('link', 'N/A'),
                     'snippet': item.get('snippet', ''),
+                    'date': pub_date if pub_date else 'N/A',
                     'source': 'Google'
                 })
             
@@ -174,11 +181,17 @@ def search_bing(keyword, num_results=30, time_filter=None, sites=None):
                 break
             
             for idx, item in enumerate(organic_results, offset + 1):
+                # Estrai data di pubblicazione se disponibile
+                pub_date = item.get('date', '')
+                if not pub_date:
+                    pub_date = item.get('snippet_highlighted_words', {}).get('date', '')
+                
                 all_results.append({
                     'position': idx,
                     'title': item.get('title', 'N/A'),
                     'url': item.get('link', 'N/A'),
                     'snippet': item.get('snippet', ''),
+                    'date': pub_date if pub_date else 'N/A',
                     'source': 'Bing'
                 })
             
@@ -253,16 +266,31 @@ def search_google_images(keyword, num_results=30, sites=None):
 def save_results(results, summary, image_results=None):
     try:
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
-            # Foglio 1 - Ordinato per Keyword, poi Source (Google prima di Bing), poi Posizione
+            # Foglio 1 - Con Data Pubblicazione e ordinamento cronologico
             if results:
                 df = pd.DataFrame(results)
-                df = df[['keyword', 'source', 'position', 'title', 'url', 'snippet', 'timestamp']]
-                df.columns = ['Keyword', 'Motore', 'Posizione', 'Titolo', 'URL', 'Snippet', 'Timestamp']
-                # Ordina: prima per Keyword, poi Google prima di Bing, poi per Posizione
-                df['_sort_order'] = df['Motore'].map({'Google': 0, 'Bing': 1})
-                df = df.sort_values(['Keyword', '_sort_order', 'Posizione']).drop('_sort_order', axis=1)
+                df = df[['keyword', 'source', 'position', 'title', 'url', 'snippet', 'date', 'timestamp']]
+                df.columns = ['Keyword', 'Motore', 'Posizione', 'Titolo', 'URL', 'Snippet', 'Data Pubblicazione', 'Timestamp']
+                
+                # Ordina per: Keyword, poi Data (più recente prima), poi Motore (Google prima di Bing)
+                # Converti date in datetime per ordinamento corretto
+                def parse_date(date_str):
+                    if date_str == 'N/A' or not date_str:
+                        return pd.Timestamp('1900-01-01')  # Date N/A vanno alla fine
+                    try:
+                        # SerpAPI restituisce date in vari formati, prova a parsare
+                        return pd.to_datetime(date_str, errors='coerce')
+                    except:
+                        return pd.Timestamp('1900-01-01')
+                
+                df['_date_sort'] = df['Data Pubblicazione'].apply(parse_date)
+                df['_source_sort'] = df['Motore'].map({'Google': 0, 'Bing': 1})
+                
+                # Ordina: prima per Keyword, poi per Data (DESC = più recente prima), poi per Motore
+                df = df.sort_values(['Keyword', '_date_sort', '_source_sort'], ascending=[True, False, True])
+                df = df.drop(['_date_sort', '_source_sort'], axis=1)
             else:
-                df = pd.DataFrame(columns=['Keyword', 'Motore', 'Posizione', 'Titolo', 'URL', 'Snippet', 'Timestamp'])
+                df = pd.DataFrame(columns=['Keyword', 'Motore', 'Posizione', 'Titolo', 'URL', 'Snippet', 'Data Pubblicazione', 'Timestamp'])
             df.to_excel(writer, sheet_name='Dettaglio SERP', index=False)
             
             # Foglio 2
@@ -344,24 +372,38 @@ def send_email(summary, recipients, image_summary=None):
             
             html += f"<hr><h3>🔑 Keyword: {keyword}</h3>"
             
-            # GOOGLE - Numero totale + primi 10 link
+            # GOOGLE - Numero totale + primi 10 link (ordinati per data)
+            google_results_sorted = sorted(
+                item.get('google_results', []),
+                key=lambda x: x.get('date', '1900-01-01') if x.get('date') not in ['N/A', ''] else '1900-01-01',
+                reverse=True
+            )
+            
             html += f"<p><strong>Google:</strong> {total_google} risultati trovati</p>"
             if total_google > 0:
                 html += "<ol>"
-                for idx, r in enumerate(item.get('google_results', [])[:10], 1):
+                for idx, r in enumerate(google_results_sorted[:10], 1):
                     if r['url'] != 'N/A':
-                        html += f'<li><a href="{r["url"]}">{r["title"]}</a></li>'
+                        date_label = f" <em>({r.get('date', 'N/A')})</em>" if r.get('date') and r.get('date') != 'N/A' else ""
+                        html += f'<li><a href="{r["url"]}">{r["title"]}</a>{date_label}</li>'
                 html += "</ol>"
                 if total_google > 10:
                     html += f"<p><em>... e altri {total_google - 10} risultati (vedi Excel)</em></p>"
             
-            # BING - Numero totale + primi 10 link
+            # BING - Numero totale + primi 10 link (ordinati per data)
+            bing_results_sorted = sorted(
+                item.get('bing_results', []),
+                key=lambda x: x.get('date', '1900-01-01') if x.get('date') not in ['N/A', ''] else '1900-01-01',
+                reverse=True
+            )
+            
             html += f"<p><strong>Bing:</strong> {total_bing} risultati trovati</p>"
             if total_bing > 0:
                 html += "<ol>"
-                for idx, r in enumerate(item.get('bing_results', [])[:10], 1):
+                for idx, r in enumerate(bing_results_sorted[:10], 1):
                     if r['url'] != 'N/A':
-                        html += f'<li><a href="{r["url"]}">{r["title"]}</a></li>'
+                        date_label = f" <em>({r.get('date', 'N/A')})</em>" if r.get('date') and r.get('date') != 'N/A' else ""
+                        html += f'<li><a href="{r["url"]}">{r["title"]}</a>{date_label}</li>'
                 html += "</ol>"
                 if total_bing > 10:
                     html += f"<p><em>... e altri {total_bing - 10} risultati (vedi Excel)</em></p>"
