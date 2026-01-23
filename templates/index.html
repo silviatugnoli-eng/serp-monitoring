@@ -7,9 +7,9 @@
     <style>
         /* COLORI PERSONALIZZABILI - Modifica questi valori */
         :root {
-           --primary-color: #a4404e;
-            --secondary-color: #26406b;
-            --accent-color: #cc9a65;
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --accent-color: #28a745;
             --text-color: #333;
             --bg-light: #f8f9fa;
             --border-color: #e0e0e0;
@@ -336,7 +336,7 @@
                 </div>
             </div>
             
-  <div id="downloadSection" style="display: none; text-align: center; margin-top: 30px;">
+            <div id="downloadSection" style="display: none; text-align: center; margin-top: 30px;">
                 <button onclick="downloadExcel()" class="btn" style="width: 100%; padding: 15px; background: var(--accent-color);">
                     📥 Scarica Ultimo Report Excel
                 </button>
@@ -345,9 +345,7 @@
             <div class="results" id="results">
                 <h2 style="margin-bottom: 20px; color: #333;">📊 Risultati</h2>
                 <div id="resultsList"></div>
-                <button class="btn download-btn" onclick="downloadExcel()">
-                    📥 Scarica Report Excel
-                </button>
+                <div id="aiResultsList" style="margin-top: 30px;"></div>
             </div>
         </div>
     </div>
@@ -360,6 +358,7 @@
         const currentKeyword = document.getElementById('currentKeyword');
         const results = document.getElementById('results');
         const resultsList = document.getElementById('resultsList');
+        const aiResultsList = document.getElementById('aiResultsList');
         const downloadSection = document.getElementById('downloadSection');
         
         form.addEventListener('submit', async (e) => {
@@ -442,6 +441,12 @@
                     } else {
                         // Analisi completata
                         displayResults(status.results);
+                        
+                        // Mostra risposte AI se presenti
+                        if (status.ai_responses && status.ai_responses.length > 0) {
+                            displayAIResults(status.ai_responses);
+                        }
+                        
                         downloadSection.style.display = 'block';
                         resetUI();
                     }
@@ -456,7 +461,9 @@
         
         function displayResults(data) {
             resultsList.innerHTML = '';
+            aiResultsList.innerHTML = '';
             
+            // Mostra risultati tradizionali
             data.forEach(item => {
                 const div = document.createElement('div');
                 div.className = 'result-item';
@@ -477,6 +484,50 @@
             });
             
             results.style.display = 'block';
+        }
+        
+        function displayAIResults(aiData) {
+            if (!aiData || aiData.length === 0) return;
+            
+            const header = document.createElement('h2');
+            header.style.cssText = 'margin-bottom: 20px; color: #333;';
+            header.textContent = '🤖 Risposte AI';
+            aiResultsList.appendChild(header);
+            
+            aiData.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'result-item';
+                div.style.borderLeft = '5px solid #667eea';
+                
+                let html = `<div class="result-keyword">🔑 ${item.keyword}</div>`;
+                
+                // AI Overview
+                if (item.ai_overview_text) {
+                    const text = item.ai_overview_text.substring(0, 300) + (item.ai_overview_text.length > 300 ? '...' : '');
+                    html += `
+                        <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 10px 0;">
+                            <div style="font-weight: 600; color: #1976d2; margin-bottom: 8px;">✨ Google AI Overview</div>
+                            <div style="color: #333; line-height: 1.6;">${text}</div>
+                        </div>
+                    `;
+                }
+                
+                // Bing Chat
+                if (item.bing_chat_text) {
+                    const text = item.bing_chat_text.substring(0, 300) + (item.bing_chat_text.length > 300 ? '...' : '');
+                    html += `
+                        <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin: 10px 0;">
+                            <div style="font-weight: 600; color: #f57c00; margin-bottom: 8px;">🤖 Bing Chat (GPT-4)</div>
+                            <div style="color: #333; line-height: 1.6;">${text}</div>
+                        </div>
+                    `;
+                }
+                
+                html += '<div style="margin-top: 10px; color: #666; font-size: 0.9em;">📎 Testo completo e fonti disponibili nell\'Excel</div>';
+                
+                div.innerHTML = html;
+                aiResultsList.appendChild(div);
+            });
         }
         
         function resetUI() {

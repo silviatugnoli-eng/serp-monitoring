@@ -385,8 +385,12 @@ def save_results(results, summary, image_results=None, ai_results=None):
                 df['_date_sort'] = df['Data Pubblicazione'].apply(parse_date)
                 df['_source_sort'] = df['Motore'].map({'Google': 0, 'Bing': 1})
                 
+                # IMPORTANTE: Ordina per data DECRESCENTE (False = più recente prima)
                 df = df.sort_values(['Keyword', '_date_sort', '_source_sort'], ascending=[True, False, True])
                 df = df.drop(['_date_sort', '_source_sort'], axis=1)
+                
+                # Reset index posizione dopo ordinamento
+                df.reset_index(drop=True, inplace=True)
             else:
                 df = pd.DataFrame(columns=['Keyword', 'Motore', 'Posizione', 'Titolo', 'URL', 'Snippet', 'Data Pubblicazione', 'Timestamp'])
             df.to_excel(writer, sheet_name='Dettaglio SERP', index=False)
@@ -695,6 +699,10 @@ def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None,
     
     analysis_status['running'] = False
     analysis_status['progress'] = 100
+    
+    # Aggiungi risposte AI allo status per mostrarle nell'interfaccia
+    if include_ai and len(ai_summary) > 0:
+        analysis_status['ai_responses'] = ai_summary
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
