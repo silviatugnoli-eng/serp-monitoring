@@ -367,13 +367,13 @@ def get_bing_chat(keyword, sites=None):
 def save_results(results, summary, image_results=None, ai_results=None):
     try:
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
-            # Foglio 1 - Con Data Pubblicazione e ordinamento cronologico
+            # Foglio 1 - SERP ordinato: Keyword → Data (desc) → Motore (Google prima)
             if results:
                 df = pd.DataFrame(results)
                 df = df[['keyword', 'source', 'position', 'title', 'url', 'snippet', 'date', 'timestamp']]
                 df.columns = ['Keyword', 'Motore', 'Posizione', 'Titolo', 'URL', 'Snippet', 'Data Pubblicazione', 'Timestamp']
                 
-                # Ordina per: Keyword, poi Data (più recente prima), poi Motore (Google prima di Bing)
+                # Funzione per parsare le date
                 def parse_date(date_str):
                     if date_str == 'N/A' or not date_str:
                         return pd.Timestamp('1900-01-01')
@@ -382,17 +382,22 @@ def save_results(results, summary, image_results=None, ai_results=None):
                     except:
                         return pd.Timestamp('1900-01-01')
                 
+                # Crea colonne temporanee per ordinamento
                 df['_date_sort'] = df['Data Pubblicazione'].apply(parse_date)
                 df['_source_sort'] = df['Motore'].map({'Google': 0, 'Bing': 1})
                 
-                # IMPORTANTE: Ordina per data DECRESCENTE (False = più recente prima)
-                df = df.sort_values(['Keyword', '_date_sort', '_source_sort'], ascending=[True, False, True])
-                df = df.drop(['_date_sort', '_source_sort'], axis=1)
+                # ORDINE: 1) Keyword alfabetico, 2) Data DESC (recente prima), 3) Google prima di Bing
+                df = df.sort_values(
+                    ['Keyword', '_date_sort', '_source_sort'], 
+                    ascending=[True, False, True]  # Keyword ASC, Data DESC, Motore ASC
+                )
                 
-                # Reset index posizione dopo ordinamento
+                # Rimuovi colonne temporanee
+                df = df.drop(['_date_sort', '_source_sort'], axis=1)
                 df.reset_index(drop=True, inplace=True)
             else:
                 df = pd.DataFrame(columns=['Keyword', 'Motore', 'Posizione', 'Titolo', 'URL', 'Snippet', 'Data Pubblicazione', 'Timestamp'])
+            
             df.to_excel(writer, sheet_name='Dettaglio SERP', index=False)
             
             # Foglio 2 - Summary
@@ -413,35 +418,56 @@ def save_results(results, summary, image_results=None, ai_results=None):
                 df_img = df_img.sort_values(['Keyword', 'Posizione'])
                 df_img.to_excel(writer, sheet_name='Google Immagini', index=False)
             
-            # Foglio 4 - Risposte AI (se presente)
+            # Foglio 4 - Risposte AI (SEMPRE presente, anche se vuoto)
             if ai_results and len(ai_results) > 0:
                 ai_data = []
                 for item in ai_results:
-                    ai_data.append({
-                        'Keyword': item['keyword'],
-                        'Tipo AI': 'Google AI Overview',
-                        'Risposta': item.get('ai_overview_text', 'N/A'),
-                        'Fonti': ', '.join([s.get('title', '') for s in item.get('ai_overview_sources', [])[:3]]) if item.get('ai_overview_sources') else 'N/A',
-                        'Timestamp': item['timestamp']
-                    })
+                    if item.get('ai_overview_text'):
+                        ai_data.append({
+                            'Keyword': item['keyword'],
+                            'Tipo AI': 'Google AI Overview',
+                            'Risposta': item.get('ai_overview_text', 'N/A'),
+                            'Fonti': ', '.join([s.get('title', '') for s in item.get('ai_overview_sources', [])[:5]]) if item.get('ai_overview_sources') else 'N/A',
+                            'Timestamp': item['timestamp']
+                        })
                     if item.get('bing_chat_text'):
                         ai_data.append({
                             'Keyword': item['keyword'],
                             'Tipo AI': 'Bing Chat (GPT-4)',
                             'Risposta': item.get('bing_chat_text', 'N/A'),
-                            'Fonti': ', '.join([s.get('title', '') for s in item.get('bing_chat_sources', [])[:3]]) if item.get('bing_chat_sources') else 'N/A',
+                            'Fonti': ', '.join([s.get('title', '') for s in item.get('bing_chat_sources', [])[:5]]) if item.get('bing_chat_sources') else 'N/A',
                             'Timestamp': item['timestamp']
                         })
                 
-                df_ai = pd.DataFrame(ai_data)
-                df_ai.to_excel(writer, sheet_name='Risposte AI', index=False)
+                if ai_data:
+                    df_ai = pd.DataFrame(ai_data)
+                else:
+                    # Foglio vuoto con messaggio
+                    df_ai = pd.DataFrame([{
+                        'Keyword': 'N/A',
+                        'Tipo AI': 'Nessun risultato',
+                        'Risposta': 'Non sono stati trovati risultati AI per questa ricerca. Le risposte AI potrebbero non essere disponibili per tutte le keywords.',
+                        'Fonti': 'N/A',
+                        'Timestamp': datetime.now().isoformat()
+                    }])
+            else:
+                # Nessun AI richiesto - foglio con messaggio
+                df_ai = pd.DataFrame([{
+                    'Keyword': 'N/A',
+                    'Tipo AI': 'Non richiesto',
+                    'Risposta': 'La ricerca AI non è stata attivata per questa analisi. Spunta la checkbox "Includi risposte AI" per ottenere risposte da Google AI Overview e Bing Chat.',
+                    'Fonti': 'N/A',
+                    'Timestamp': datetime.now().isoformat()
+                }])
             
-            # Foglio Statistiche (ultimo)
+            df_ai.to_excel(writer, sheet_name='Risposte AI', index=False)
+            
+            # Foglio 5 - Statistiche (ultimo)
             total_g = sum(s['Risultati Google'] for s in summary) if summary else 0
             total_b = sum(s['Risultati Bing'] for s in summary) if summary else 0
             avg_pos = sum(r['position'] for r in results) / len(results) if results else 0
             total_images = len(image_results) if image_results else 0
-            total_ai = len(ai_results) if ai_results else 0
+            total_ai = len([item for item in (ai_results or []) if item.get('ai_overview_text') or item.get('bing_chat_text')])
             
             metrics = ['Keywords Totali', 'Notizie Google raccolte', 'Notizie Bing raccolte', 
                       'Posizione media SERP', 'Ultima Analisi']
