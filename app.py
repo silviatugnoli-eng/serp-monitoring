@@ -665,6 +665,10 @@ def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None,
     ai_summary = []
     total = len(keywords)
     
+    # INIZIALIZZA ai_responses se AI è richiesta
+    if include_ai:
+        analysis_status['ai_responses'] = []
+    
     for idx, keyword in enumerate(keywords, 1):
         analysis_status['current_keyword'] = keyword
         analysis_status['progress'] = int((idx / total) * 100)
@@ -718,6 +722,8 @@ def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None,
             if ai_overview or bing_chat:
                 all_ai.append(ai_item)
                 ai_summary.append(ai_item)
+                # 🔥 AGGIUNGI IMMEDIATAMENTE ALLO STATUS PER IL FRONTEND
+                analysis_status['ai_responses'].append(ai_item)
     
     save_results(all_results, summary_data, all_images if include_images else None, all_ai if include_ai else None)
     if emails:
