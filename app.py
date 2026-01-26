@@ -235,8 +235,12 @@ def search_google_images(keyword, num_results=30, sites=None):
             'engine': 'google_images',
             'q': query,
             'num': num_results,
-            'hl': 'it',
+            'google_domain': 'google.it',   # FORZA google.it
             'gl': 'it',
+            'hl': 'it',
+            'lr': 'lang_it',
+            'cr': 'countryIT',
+            'location': 'Italy',
             'api_key': serpapi_key
         }
         
@@ -287,8 +291,12 @@ def get_ai_overview(keyword, sites=None):
         params = {
             'engine': 'google',
             'q': query,
-            'hl': 'it',
+            'google_domain': 'google.it',   # FORZA google.it
             'gl': 'it',
+            'hl': 'it',
+            'lr': 'lang_it',
+            'cr': 'countryIT',
+            'location': 'Italy',
             'api_key': serpapi_key
         }
         
@@ -338,8 +346,12 @@ def get_bing_chat(keyword, sites=None):
         logging.info(f"🤖 Bing Copilot: {keyword}")
         
         params = {
-            'engine': 'bing_copilot',  # Engine corretto
+            'engine': 'bing_copilot',
             'q': query,
+            'cc': 'IT',
+            'setlang': 'it',
+            'mkt': 'it-IT',
+            'location': 'Italy',
             'api_key': serpapi_key
         }
         
