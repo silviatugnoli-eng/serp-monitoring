@@ -317,7 +317,8 @@ def get_ai_overview(keyword, sites=None):
 
 def get_bing_chat(keyword, sites=None):
     """
-    Ottiene risposta conversazionale da Bing Chat (powered by GPT-4).
+    Ottiene risposta conversazionale da Bing Copilot (powered by GPT-4).
+    Engine corretto: bing_copilot (non bing_chat)
     
     Args:
         keyword: La keyword da cercare
@@ -334,40 +335,59 @@ def get_bing_chat(keyword, sites=None):
         query = f'{keyword} ({site_filter})'
     
     try:
-        logging.info(f"🤖 Bing Chat: {keyword}")
+        logging.info(f"🤖 Bing Copilot: {keyword}")
         
         params = {
-            'engine': 'bing_chat',
+            'engine': 'bing_copilot',  # Engine corretto
             'q': query,
             'api_key': serpapi_key
         }
         
-        response = requests.get('https://serpapi.com/search', params=params, timeout=20)
+        response = requests.get('https://serpapi.com/search', params=params, timeout=30)
         response.raise_for_status()
         data = response.json()
         
-        # Estrai risposta conversazionale
-        answer = data.get('answer', '')
-        sources = data.get('organic_results', [])
+        # Estrai risposta conversazionale da Copilot
+        # Bing Copilot restituisce 'header' per il testo principale
+        header = data.get('header', '')
+        text_blocks = data.get('text_blocks', [])
         
-        if answer:
-            logging.info(f"✓ Bing Chat risposta ({len(answer)} caratteri)")
+        # Combina header e text_blocks in un unico testo
+        full_text = header
+        if text_blocks:
+            for block in text_blocks[:3]:  # Primi 3 blocchi
+                if isinstance(block, dict):
+                    block_text = block.get('text', '')
+                    if block_text:
+                        full_text += ' ' + block_text
+        
+        # Estrai fonti
+        references = data.get('references', [])
+        sources = []
+        for ref in references[:5]:
+            sources.append({
+                'title': ref.get('title', ''),
+                'url': ref.get('link', '')
+            })
+        
+        if full_text:
+            logging.info(f"✓ Bing Copilot risposta ({len(full_text)} caratteri)")
             return {
-                'text': answer,
-                'sources': [{'title': s.get('title', ''), 'url': s.get('link', '')} for s in sources[:5]]
+                'text': full_text.strip(),
+                'sources': sources
             }
         else:
-            logging.info("  Nessuna risposta Bing Chat")
+            logging.info("  Nessuna risposta Bing Copilot")
             return None
         
     except Exception as e:
-        logging.error(f"✗ Errore Bing Chat: {e}")
+        logging.error(f"✗ Errore Bing Copilot: {e}")
         return None
 
 def save_results(results, summary, image_results=None, ai_results=None):
     try:
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
-            # Foglio 1 - SERP ordinato: Keyword → Data (desc) → Motore (Google prima)
+            # Foglio 1 - SERP ordinato: Keyword → Motore (Google/Bing) → Data (desc)
             if results:
                 df = pd.DataFrame(results)
                 df = df[['keyword', 'source', 'position', 'title', 'url', 'snippet', 'date', 'timestamp']]
@@ -378,7 +398,10 @@ def save_results(results, summary, image_results=None, ai_results=None):
                     if date_str == 'N/A' or not date_str:
                         return pd.Timestamp('1900-01-01')
                     try:
-                        return pd.to_datetime(date_str, errors='coerce')
+                        parsed = pd.to_datetime(date_str, errors='coerce')
+                        if pd.isna(parsed):
+                            return pd.Timestamp('1900-01-01')
+                        return parsed
                     except:
                         return pd.Timestamp('1900-01-01')
                 
@@ -386,10 +409,13 @@ def save_results(results, summary, image_results=None, ai_results=None):
                 df['_date_sort'] = df['Data Pubblicazione'].apply(parse_date)
                 df['_source_sort'] = df['Motore'].map({'Google': 0, 'Bing': 1})
                 
-                # ORDINE: 1) Keyword alfabetico, 2) Data DESC (recente prima), 3) Google prima di Bing
+                # ORDINE CORRETTO:
+                # 1) Keyword alfabetico (ASC)
+                # 2) Motore: Google=0, Bing=1 (ASC = Google prima)
+                # 3) Data: DESC (più recente prima)
                 df = df.sort_values(
-                    ['Keyword', '_date_sort', '_source_sort'], 
-                    ascending=[True, False, True]  # Keyword ASC, Data DESC, Motore ASC
+                    ['Keyword', '_source_sort', '_date_sort'], 
+                    ascending=[True, True, False]  # Keyword ASC, Motore ASC (Google prima), Data DESC
                 )
                 
                 # Rimuovi colonne temporanee
