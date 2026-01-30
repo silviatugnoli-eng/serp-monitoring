@@ -230,98 +230,149 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-
-        .info-box {
-            background: #e3f2fd;
-            border-left: 4px solid #2196f3;
+        
+        .checkbox-container {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            margin: 20px 0;
             padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
+            background: var(--bg-light);
+            border-radius: 10px;
+        }
+        
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+        
+        .checkbox-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+        
+        .checkbox-item label {
+            margin: 0;
+            cursor: pointer;
+            font-size: 1em;
         }
 
-        .info-box strong {
-            color: #1976d2;
+        .logout-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid white;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .logout-btn:hover {
+            background: white;
+            color: var(--primary-color);
+        }
+
+        .news-item {
+            background: #fff3e0;
+            border-left: 5px solid #ff9800;
+        }
+
+        .news-header {
+            font-weight: 600;
+            color: #f57c00;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+
+        .news-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .news-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #ffe0b2;
+        }
+
+        .news-list li:last-child {
+            border-bottom: none;
+        }
+
+        .news-source {
+            color: #666;
+            font-size: 0.85em;
+            margin-top: 3px;
         }
     </style>
 </head>
 <body>
+    <a href="/logout" class="logout-btn">🚪 Logout</a>
+    
     <div class="container">
         <div class="card">
             <h1>🔍 SERP Monitor</h1>
-            <p class="subtitle">Analisi Reputazione Online su Google e Bing</p>
+            <p class="subtitle">Monitora la tua reputazione online su Google.it e Bing.it</p>
             
             <form id="analysisForm">
                 <div class="form-group">
-                    <label for="keywords">Keywords da analizzare</label>
-                    <textarea 
-                        id="keywords" 
-                        rows="8" 
-                        placeholder="Inserisci una keyword per riga, esempio:&#10;Parola chiave 1&#10;Parola chiave 2&#10;Parola chiave 3"
-                        required
-                    ></textarea>
-                    <p class="hint">💡 Una keyword per riga. Verranno cercate su Google e Bing.</p>
-                </div>
-
-                <div class="form-group">
-                    <label for="sites">Limita ricerca a siti specifici (opzionale)</label>
-                    <textarea 
-                        id="sites" 
-                        rows="4" 
-                        placeholder="Inserisci un dominio per riga, esempio:&#10;corriere.it&#10;repubblica.it&#10;ilpost.it&#10;ansa.it"
-                    ></textarea>
-                    <p class="hint">🌐 Se inserisci dei siti, la ricerca verrà limitata solo a quei domini. Lascia vuoto per cercare ovunque.</p>
-                </div>
-
-                <div class="form-group">
-                    <label for="numResults">Numero di risultati per motore</label>
-                    <select id="numResults">
-                        <option value="10">⚡ 10 risultati (1 pagina, veloce)</option>
-                        <option value="20">📄 20 risultati (2 pagine)</option>
-                        <option value="30" selected>🎯 30 risultati (3 pagine, consigliato)</option>
-                    </select>
-                    <p class="hint">📊 Google ha cambiato le regole: max 10 risultati per pagina. Usiamo la paginazione per ottenere più risultati.</p>
-                </div>
-
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="checkbox" id="includeImages" style="width: auto; margin-right: 10px; cursor: pointer;">
-                        <span>🖼️ Includi ricerca Google Immagini</span>
-                    </label>
-                    <p class="hint">📸 Se attivato, cercherà anche immagini su Google. I risultati andranno in un foglio Excel separato.</p>
-                </div>
-
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="checkbox" id="includeAI" style="width: auto; margin-right: 10px; cursor: pointer;" checked>
-                        <span>🤖 Includi risposte AI (Google AI Overview + Bing Chat)</span>
-                    </label>
-                    <p class="hint">✨ Se attivato, include le risposte AI generate dai motori di ricerca. Costo: +1-2 crediti per keyword.</p>
+                    <label for="keywords">🔑 Keywords (una per riga, max 20)</label>
+                    <textarea id="keywords" rows="5" placeholder="nome azienda&#10;brand prodotto&#10;ceo nome cognome" required></textarea>
+                    <div class="hint">Inserisci le parole chiave da monitorare, una per riga</div>
                 </div>
                 
                 <div class="form-group">
-                    <label for="timeFilter">Periodo di ricerca</label>
+                    <label for="sites">🌐 Filtra per Siti (opzionale, uno per riga)</label>
+                    <textarea id="sites" rows="4" placeholder="corriere.it&#10;repubblica.it&#10;ilpost.it"></textarea>
+                    <div class="hint">Limita la ricerca a specifici domini (es: siti di news). Lascia vuoto per cercare ovunque.</div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="timeFilter">⏰ Filtro Temporale</label>
                     <select id="timeFilter">
-                        <option value="">📅 Tutte le notizie</option>
-                        <option value="day">🆕 Solo ultime 24 ore</option>
-                        <option value="week">📰 Ultima settimana</option>
-                        <option value="month">📊 Ultimo mese</option>
+                        <option value="">Tutti i risultati</option>
+                        <option value="day">Ultime 24 ore</option>
+                        <option value="week">Ultima settimana</option>
+                        <option value="month">Ultimo mese</option>
                     </select>
-                    <p class="hint">⏰ Filtra i risultati per data di pubblicazione</p>
                 </div>
                 
                 <div class="form-group">
-                    <label for="emails">Email per ricevere i risultati (opzionale)</label>
-                    <input 
-                        type="text" 
-                        id="emails" 
-                        placeholder="email1@esempio.com, email2@esempio.com, email3@esempio.com"
-                    />
-                    <p class="hint">📧 Puoi inserire più email separate da virgola. Riceverai l'email con i link alle notizie + Excel allegato</p>
+                    <label for="numResults">📊 Numero Risultati per Motore</label>
+                    <select id="numResults">
+                        <option value="10">10 risultati</option>
+                        <option value="20">20 risultati</option>
+                        <option value="30" selected>30 risultati</option>
+                        <option value="50">50 risultati</option>
+                    </select>
                 </div>
 
-                <div class="info-box">
-                    <strong>⚠️ Importante per Piano Gratuito Mailgun:</strong><br>
-                    Ogni email deve essere verificata su Mailgun prima di ricevere report. Max 5 destinatari. Funziona con Gmail, Yahoo, Libero, etc.
+                <div class="checkbox-container">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="includeImages">
+                        <label for="includeImages">🖼️ Includi Immagini</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="includeNews">
+                        <label for="includeNews">📰 Includi Notizie</label>
+                    </div>
+                </div>
+                <div class="hint" style="margin-top: -15px; margin-bottom: 20px;">
+                    ℹ️ Le notizie mostrano i risultati dalla sezione "Notizie principali" di Google con le news più recenti
+                </div>
+                
+                <div class="form-group">
+                    <label for="emails">📧 Email Report (opzionale, separati da virgola)</label>
+                    <input type="text" id="emails" placeholder="mario@example.com, luigi@example.com">
+                    <div class="hint">
+                        Ogni email deve essere verificata su Mailgun prima di ricevere report. Max 5 destinatari. Funziona con Gmail, Yahoo, Libero, etc.
+                    </div>
                 </div>
                 
                 <button type="submit" class="btn" id="analyzeBtn">
@@ -345,7 +396,7 @@
             <div class="results" id="results">
                 <h2 style="margin-bottom: 20px; color: #333;">📊 Risultati</h2>
                 <div id="resultsList"></div>
-                <div id="aiResultsList" style="margin-top: 30px;"></div>
+                <div id="newsResultsList" style="margin-top: 30px;"></div>
             </div>
         </div>
     </div>
@@ -358,7 +409,7 @@
         const currentKeyword = document.getElementById('currentKeyword');
         const results = document.getElementById('results');
         const resultsList = document.getElementById('resultsList');
-        const aiResultsList = document.getElementById('aiResultsList');
+        const newsResultsList = document.getElementById('newsResultsList');
         const downloadSection = document.getElementById('downloadSection');
         
         form.addEventListener('submit', async (e) => {
@@ -370,7 +421,7 @@
             const timeFilter = document.getElementById('timeFilter').value;
             const numResults = parseInt(document.getElementById('numResults').value);
             const includeImages = document.getElementById('includeImages').checked;
-            const includeAI = document.getElementById('includeAI').checked;
+            const includeNews = document.getElementById('includeNews').checked;
             
             if (!keywordsText) {
                 alert('Inserisci almeno una keyword!');
@@ -405,7 +456,7 @@
                         time_filter: timeFilter || null,
                         num_results: numResults,
                         include_images: includeImages,
-                        include_ai: includeAI
+                        include_news: includeNews
                     })
                 });
                 
@@ -442,9 +493,9 @@
                         // Analisi completata
                         displayResults(status.results);
                         
-                        // Mostra risposte AI se presenti
-                        if (status.ai_responses && status.ai_responses.length > 0) {
-                            displayAIResults(status.ai_responses);
+                        // Mostra news se presenti
+                        if (status.news_results && status.news_results.length > 0) {
+                            displayNewsResults(status.news_results);
                         }
                         
                         downloadSection.style.display = 'block';
@@ -461,7 +512,7 @@
         
         function displayResults(data) {
             resultsList.innerHTML = '';
-            aiResultsList.innerHTML = '';
+            newsResultsList.innerHTML = '';
             
             // Mostra risultati tradizionali
             data.forEach(item => {
@@ -471,11 +522,11 @@
                     <div class="result-keyword">${item.Keyword}</div>
                     <div class="result-stats">
                         <div class="stat">
-                            <div class="stat-label">Google</div>
+                            <div class="stat-label">Google.it</div>
                             <div class="stat-value">${item['Risultati Google']} risultati</div>
                         </div>
                         <div class="stat">
-                            <div class="stat-label">Bing</div>
+                            <div class="stat-label">Bing.it</div>
                             <div class="stat-value">${item['Risultati Bing']} risultati</div>
                         </div>
                     </div>
@@ -486,47 +537,42 @@
             results.style.display = 'block';
         }
         
-        function displayAIResults(aiData) {
-            if (!aiData || aiData.length === 0) return;
+        function displayNewsResults(newsData) {
+            if (!newsData || newsData.length === 0) return;
             
             const header = document.createElement('h2');
             header.style.cssText = 'margin-bottom: 20px; color: #333;';
-            header.textContent = '🤖 Risposte AI';
-            aiResultsList.appendChild(header);
+            header.textContent = '📰 Ultime Notizie';
+            newsResultsList.appendChild(header);
             
-            aiData.forEach(item => {
+            newsData.forEach(item => {
+                if (!item.news || item.news.length === 0) return;
+                
                 const div = document.createElement('div');
-                div.className = 'result-item';
-                div.style.borderLeft = '5px solid #667eea';
+                div.className = 'result-item news-item';
                 
                 let html = `<div class="result-keyword">🔑 ${item.keyword}</div>`;
+                html += `<div class="news-header">📰 ${item.news.length} notizie trovate</div>`;
+                html += '<ul class="news-list">';
                 
-                // AI Overview
-                if (item.ai_overview_text) {
-                    const text = item.ai_overview_text.substring(0, 300) + (item.ai_overview_text.length > 300 ? '...' : '');
+                item.news.forEach(news => {
                     html += `
-                        <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 10px 0;">
-                            <div style="font-weight: 600; color: #1976d2; margin-bottom: 8px;">✨ Google AI Overview</div>
-                            <div style="color: #333; line-height: 1.6;">${text}</div>
-                        </div>
+                        <li>
+                            <a href="${news.url}" target="_blank" style="color: #f57c00; text-decoration: none; font-weight: 500;">
+                                ${news.title}
+                            </a>
+                            <div class="news-source">
+                                ${news.source_name} • ${news.date}
+                            </div>
+                        </li>
                     `;
-                }
+                });
                 
-                // Bing Chat
-                if (item.bing_chat_text) {
-                    const text = item.bing_chat_text.substring(0, 300) + (item.bing_chat_text.length > 300 ? '...' : '');
-                    html += `
-                        <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin: 10px 0;">
-                            <div style="font-weight: 600; color: #f57c00; margin-bottom: 8px;">🤖 Bing Chat (GPT-4)</div>
-                            <div style="color: #333; line-height: 1.6;">${text}</div>
-                        </div>
-                    `;
-                }
-                
-                html += '<div style="margin-top: 10px; color: #666; font-size: 0.9em;">📎 Testo completo e fonti disponibili nell\'Excel</div>';
+                html += '</ul>';
+                html += '<div style="margin-top: 10px; color: #666; font-size: 0.9em;">📎 Tutte le news disponibili nell\'Excel</div>';
                 
                 div.innerHTML = html;
-                aiResultsList.appendChild(div);
+                newsResultsList.appendChild(div);
             });
         }
         
