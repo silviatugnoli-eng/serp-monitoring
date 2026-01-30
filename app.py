@@ -29,6 +29,24 @@ DATA_DIR = Path("data")
 DATA_DIR.mkdir(exist_ok=True)
 EXCEL_FILE = DATA_DIR / "serp_monitoring_results.xlsx"
 
+# ============================================
+# CONFIGURAZIONE MOTORI DI RICERCA
+# Modifica questi valori per cambiare i motori utilizzati
+# ============================================
+SEARCH_ENGINES = {
+    'google': {
+        'enabled': True,
+        'domain': 'google.it',  # Modifica qui per cambiare dominio (es: google.com, google.fr)
+        'gl': 'it',             # Geolocalizzazione (it, us, fr, etc.)
+        'hl': 'it'              # Lingua interfaccia (it, en, fr, etc.)
+    },
+    'bing': {
+        'enabled': True,
+        'market': 'it-IT',      # Modifica qui per cambiare mercato (it-IT, en-US, fr-FR, etc.)
+        'cc': 'it'              # Codice paese (it, us, fr, etc.)
+    }
+}
+
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -47,14 +65,11 @@ def login_required(f):
 def search_google(keyword, num_results=30, time_filter=None, sites=None):
     """
     Cerca su Google con paginazione per ottenere più di 10 risultati.
-    Google ora restituisce max 10 risultati per chiamata, quindi usiamo 'start' per paginare.
-    
-    Args:
-        keyword: La keyword da cercare
-        num_results: Numero totale di risultati desiderati
-        time_filter: Filtro temporale (day, week, month)
-        sites: Lista di domini per limitare la ricerca (es: ['corriere.it', 'repubblica.it'])
+    Configurabile tramite SEARCH_ENGINES['google']
     """
+    if not SEARCH_ENGINES['google']['enabled']:
+        return []
+        
     serpapi_key = os.getenv('SERPAPI_KEY')
     if not serpapi_key:
         logging.error("SERPAPI_KEY non configurata!")
@@ -63,27 +78,28 @@ def search_google(keyword, num_results=30, time_filter=None, sites=None):
     # Costruisci query con filtro siti se specificato
     query = keyword
     if sites and len(sites) > 0:
-        # Crea filtro tipo: (site:corriere.it OR site:repubblica.it OR site:ilpost.it)
         site_filter = ' OR '.join([f'site:{site.strip()}' for site in sites])
         query = f'{keyword} ({site_filter})'
         logging.info(f"   Filtro siti applicato: {len(sites)} domini")
     
     all_results = []
-    pages_needed = (num_results + 9) // 10  # Arrotonda per eccesso (30 risultati = 3 pagine)
+    pages_needed = (num_results + 9) // 10
     
     try:
-        logging.info(f"🔍 Google: {keyword} (target {num_results} risultati, {pages_needed} pagine)")
+        google_config = SEARCH_ENGINES['google']
+        logging.info(f"🔍 Google.{google_config['gl']}: {keyword} (target {num_results} risultati, {pages_needed} pagine)")
         
         for page in range(pages_needed):
             start = page * 10
             
             params = {
                 'engine': 'google',
-                'q': query,  # Usa query modificata con site: filter
+                'q': query,
                 'start': start,
                 'num': 10,
-                'hl': 'it',
-                'gl': 'it',
+                'hl': google_config['hl'],
+                'gl': google_config['gl'],
+                'google_domain': google_config['domain'],
                 'api_key': serpapi_key
             }
             
@@ -102,10 +118,8 @@ def search_google(keyword, num_results=30, time_filter=None, sites=None):
                 break
             
             for idx, item in enumerate(organic_results, start + 1):
-                # Estrai data di pubblicazione se disponibile
                 pub_date = item.get('date', '')
                 if not pub_date:
-                    # Prova con altri possibili campi
                     pub_date = item.get('snippet_highlighted_words', {}).get('date', '')
                 
                 all_results.append({
@@ -114,33 +128,29 @@ def search_google(keyword, num_results=30, time_filter=None, sites=None):
                     'url': item.get('link', 'N/A'),
                     'snippet': item.get('snippet', ''),
                     'date': pub_date if pub_date else 'N/A',
-                    'source': 'Google'
+                    'source': f"Google.{google_config['gl']}"
                 })
             
             logging.info(f"  Pagina {page+1}: +{len(organic_results)} risultati")
             
-            # Piccola pausa tra le richieste per non sovraccaricare l'API
             if page < pages_needed - 1:
                 time.sleep(0.5)
         
         logging.info(f"✓ Totale {len(all_results)} risultati Google")
-        return all_results[:num_results]  # Limita al numero richiesto
+        return all_results[:num_results]
         
     except Exception as e:
         logging.error(f"✗ Errore Google: {e}")
-        return all_results  # Restituisci quello che hai raccolto finora
+        return all_results
 
 def search_bing(keyword, num_results=30, time_filter=None, sites=None):
     """
     Cerca su Bing con paginazione.
-    Bing supporta 'offset' per la paginazione.
-    
-    Args:
-        keyword: La keyword da cercare
-        num_results: Numero totale di risultati desiderati
-        time_filter: Filtro temporale (non supportato da Bing)
-        sites: Lista di domini per limitare la ricerca
+    Configurabile tramite SEARCH_ENGINES['bing']
     """
+    if not SEARCH_ENGINES['bing']['enabled']:
+        return []
+        
     serpapi_key = os.getenv('SERPAPI_KEY')
     if not serpapi_key:
         return []
@@ -156,17 +166,19 @@ def search_bing(keyword, num_results=30, time_filter=None, sites=None):
     pages_needed = (num_results + 9) // 10
     
     try:
-        logging.info(f"🔍 Bing: {keyword} (target {num_results} risultati, {pages_needed} pagine)")
+        bing_config = SEARCH_ENGINES['bing']
+        logging.info(f"🔍 Bing.{bing_config['cc']}: {keyword} (target {num_results} risultati, {pages_needed} pagine)")
         
         for page in range(pages_needed):
             offset = page * 10
             
             params = {
                 'engine': 'bing',
-                'q': query,  # Usa query modificata con site: filter
-                'first': offset + 1,  # Bing usa 'first' (1-indexed)
+                'q': query,
+                'first': offset + 1,
                 'count': 10,
-                'cc': 'it',
+                'cc': bing_config['cc'],
+                'mkt': bing_config['market'],
                 'api_key': serpapi_key
             }
             
@@ -181,7 +193,6 @@ def search_bing(keyword, num_results=30, time_filter=None, sites=None):
                 break
             
             for idx, item in enumerate(organic_results, offset + 1):
-                # Estrai data di pubblicazione se disponibile
                 pub_date = item.get('date', '')
                 if not pub_date:
                     pub_date = item.get('snippet_highlighted_words', {}).get('date', '')
@@ -192,7 +203,7 @@ def search_bing(keyword, num_results=30, time_filter=None, sites=None):
                     'url': item.get('link', 'N/A'),
                     'snippet': item.get('snippet', ''),
                     'date': pub_date if pub_date else 'N/A',
-                    'source': 'Bing'
+                    'source': f"Bing.{bing_config['cc']}"
                 })
             
             logging.info(f"  Pagina {page+1}: +{len(organic_results)} risultati")
@@ -207,40 +218,129 @@ def search_bing(keyword, num_results=30, time_filter=None, sites=None):
         logging.error(f"✗ Errore Bing: {e}")
         return all_results
 
-def search_google_images(keyword, num_results=30, sites=None):
+def search_google_news(keyword, num_results=10, time_filter=None, sites=None):
     """
-    Cerca immagini su Google Images.
+    Cerca nelle Google News (Notizie principali) con paginazione.
+    Restituisce le notizie più recenti per la keyword.
     
     Args:
         keyword: La keyword da cercare
-        num_results: Numero di immagini desiderate (max 100)
+        num_results: Numero totale di notizie desiderate
+        time_filter: Filtro temporale (day, week, month)
         sites: Lista di domini per limitare la ricerca
     """
+    if not SEARCH_ENGINES['google']['enabled']:
+        return []
+        
+    serpapi_key = os.getenv('SERPAPI_KEY')
+    if not serpapi_key:
+        logging.error("SERPAPI_KEY non configurata!")
+        return []
+    
+    # Costruisci query con filtro siti se specificato
+    query = keyword
+    if sites and len(sites) > 0:
+        site_filter = ' OR '.join([f'site:{site.strip()}' for site in sites])
+        query = f'{keyword} ({site_filter})'
+        logging.info(f"   Filtro siti applicato: {len(sites)} domini")
+    
+    all_news = []
+    pages_needed = (num_results + 9) // 10  # Google News restituisce ~10 risultati per pagina
+    
+    try:
+        google_config = SEARCH_ENGINES['google']
+        logging.info(f"📰 Google News ({google_config['gl']}): {keyword} (target {num_results} notizie, {pages_needed} pagine)")
+        
+        for page in range(pages_needed):
+            start = page * 10
+            
+            params = {
+                'engine': 'google',
+                'q': query,
+                'tbm': 'nws',  # Ricerca news
+                'start': start,
+                'num': 10,
+                'hl': google_config['hl'],
+                'gl': google_config['gl'],
+                'google_domain': google_config['domain'],
+                'api_key': serpapi_key
+            }
+            
+            # Applica filtro temporale se specificato
+            if time_filter == 'day': 
+                params['tbs'] = 'qdr:d'
+                logging.info(f"   Filtro temporale: ultime 24 ore")
+            elif time_filter == 'week': 
+                params['tbs'] = 'qdr:w'
+                logging.info(f"   Filtro temporale: ultima settimana")
+            elif time_filter == 'month': 
+                params['tbs'] = 'qdr:m'
+                logging.info(f"   Filtro temporale: ultimo mese")
+            
+            response = requests.get('https://serpapi.com/search', params=params, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+            
+            news_results = data.get('news_results', [])
+            
+            if not news_results:
+                logging.info(f"  Pagina {page+1}: nessuna notizia, stop paginazione")
+                break
+            
+            for idx, item in enumerate(news_results, start + 1):
+                # Estrai informazioni dalla news
+                source = item.get('source', {}).get('name', 'N/A')
+                date = item.get('date', 'N/A')
+                
+                all_news.append({
+                    'position': idx,
+                    'title': item.get('title', 'N/A'),
+                    'url': item.get('link', 'N/A'),
+                    'snippet': item.get('snippet', ''),
+                    'source_name': source,
+                    'date': date,
+                    'thumbnail': item.get('thumbnail', ''),
+                    'type': 'Google News'
+                })
+            
+            logging.info(f"  Pagina {page+1}: +{len(news_results)} notizie")
+            
+            # Pausa tra le richieste
+            if page < pages_needed - 1:
+                time.sleep(0.5)
+        
+        logging.info(f"✓ Totale {len(all_news)} notizie")
+        return all_news[:num_results]  # Limita al numero richiesto
+        
+    except Exception as e:
+        logging.error(f"✗ Errore Google News: {e}")
+        return []
+
+def search_google_images(keyword, num_results=30, sites=None):
+    """Cerca immagini su Google"""
+    if not SEARCH_ENGINES['google']['enabled']:
+        return []
+        
     serpapi_key = os.getenv('SERPAPI_KEY')
     if not serpapi_key:
         return []
     
-    # Costruisci query con filtro siti
     query = keyword
     if sites and len(sites) > 0:
         site_filter = ' OR '.join([f'site:{site.strip()}' for site in sites])
         query = f'{keyword} ({site_filter})'
     
-    all_results = []
-    
     try:
-        logging.info(f"🖼️  Google Images: {keyword} (target {num_results} risultati)")
+        google_config = SEARCH_ENGINES['google']
+        logging.info(f"🖼️  Google Images ({google_config['gl']}): {keyword}")
         
         params = {
             'engine': 'google_images',
             'q': query,
             'num': num_results,
-            'google_domain': 'google.it',   # FORZA google.it
-            'gl': 'it',
-            'hl': 'it',
-            'lr': 'lang_it',
-            'cr': 'countryIT',
-            'location': 'Italy',
+            'hl': google_config['hl'],
+            'gl': google_config['gl'],
+            'google_domain': google_config['domain'],
             'api_key': serpapi_key
         }
         
@@ -248,421 +348,189 @@ def search_google_images(keyword, num_results=30, sites=None):
         response.raise_for_status()
         data = response.json()
         
-        images = data.get('images_results', [])
-        
-        for idx, item in enumerate(images[:num_results], 1):
-            all_results.append({
+        images = []
+        for idx, item in enumerate(data.get('images_results', [])[:num_results], 1):
+            images.append({
                 'position': idx,
                 'title': item.get('title', 'N/A'),
-                'url': item.get('link', 'N/A'),
-                'thumbnail': item.get('thumbnail', 'N/A'),
-                'source_url': item.get('source', 'N/A'),
-                'source': 'Google Images'
+                'link': item.get('link', 'N/A'),
+                'source': item.get('source', 'N/A'),
+                'thumbnail': item.get('thumbnail', ''),
+                'original': item.get('original', ''),
             })
         
-        logging.info(f"✓ {len(all_results)} immagini trovate")
-        return all_results
+        logging.info(f"✓ Trovate {len(images)} immagini")
+        return images
         
     except Exception as e:
         logging.error(f"✗ Errore Google Images: {e}")
         return []
 
-def get_ai_overview(keyword, sites=None):
-    """
-    Estrae AI Overview da Google (risposta AI in alto nei risultati).
-    
-    Args:
-        keyword: La keyword da cercare
-        sites: Lista di domini per limitare la ricerca
-    """
-    serpapi_key = os.getenv('SERPAPI_KEY')
-    if not serpapi_key:
-        return None
-    
-    # Costruisci query con filtro siti
-    query = keyword
-    if sites and len(sites) > 0:
-        site_filter = ' OR '.join([f'site:{site.strip()}' for site in sites])
-        query = f'{keyword} ({site_filter})'
-    
-    try:
-        logging.info(f"✨ Google AI Overview: {keyword}")
-        
-        params = {
-            'engine': 'google',
-            'q': query,
-            'google_domain': 'google.it',   # FORZA google.it
-            'gl': 'it',
-            'hl': 'it',
-            'lr': 'lang_it',
-            'cr': 'countryIT',
-            'location': 'Italy',
-            'api_key': serpapi_key
-        }
-        
-        response = requests.get('https://serpapi.com/search', params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        
-        # Estrai AI Overview se presente
-        ai_overview = data.get('ai_overview')
-        
-        if ai_overview:
-            text = ai_overview.get('text', '')
-            sources = ai_overview.get('sources', [])
-            logging.info(f"✓ AI Overview trovato ({len(text)} caratteri)")
-            return {
-                'text': text,
-                'sources': sources
-            }
-        else:
-            logging.info("  Nessun AI Overview disponibile")
-            return None
-        
-    except Exception as e:
-        logging.error(f"✗ Errore AI Overview: {e}")
-        return None
-
-def get_bing_chat(keyword, sites=None):
-    """
-    Ottiene risposta conversazionale da Bing Copilot (powered by GPT-4).
-    Engine corretto: bing_copilot (non bing_chat)
-    
-    Args:
-        keyword: La keyword da cercare
-        sites: Lista di domini per limitare la ricerca
-    """
-    serpapi_key = os.getenv('SERPAPI_KEY')
-    if not serpapi_key:
-        return None
-    
-    # Costruisci query con filtro siti
-    query = keyword
-    if sites and len(sites) > 0:
-        site_filter = ' OR '.join([f'site:{site.strip()}' for site in sites])
-        query = f'{keyword} ({site_filter})'
-    
-    try:
-        logging.info(f"🤖 Bing Copilot: {keyword}")
-        
-        params = {
-            'engine': 'bing_copilot',
-            'q': query,
-            'cc': 'IT',
-            'setlang': 'it',
-            'mkt': 'it-IT',
-            'location': 'Italy',
-            'api_key': serpapi_key
-        }
-        
-        response = requests.get('https://serpapi.com/search', params=params, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-        
-        # Estrai risposta conversazionale da Copilot
-        # Bing Copilot restituisce 'header' per il testo principale
-        header = data.get('header', '')
-        text_blocks = data.get('text_blocks', [])
-        
-        # Combina header e text_blocks in un unico testo
-        full_text = header
-        if text_blocks:
-            for block in text_blocks[:3]:  # Primi 3 blocchi
-                if isinstance(block, dict):
-                    block_text = block.get('text', '')
-                    if block_text:
-                        full_text += ' ' + block_text
-        
-        # Estrai fonti
-        references = data.get('references', [])
-        sources = []
-        for ref in references[:5]:
-            sources.append({
-                'title': ref.get('title', ''),
-                'url': ref.get('link', '')
-            })
-        
-        if full_text:
-            logging.info(f"✓ Bing Copilot risposta ({len(full_text)} caratteri)")
-            return {
-                'text': full_text.strip(),
-                'sources': sources
-            }
-        else:
-            logging.info("  Nessuna risposta Bing Copilot")
-            return None
-        
-    except Exception as e:
-        logging.error(f"✗ Errore Bing Copilot: {e}")
-        return None
-
-def save_results(results, summary, image_results=None, ai_results=None):
+def save_results(results, summary, images=None, news=None):
+    """Salva risultati in Excel con fogli separati per Google, Bing e News"""
     try:
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
-            # Foglio 1 - SERP ordinato: Keyword → Motore (Google/Bing) → Data (desc)
+            # Separa i risultati per fonte
             if results:
-                df = pd.DataFrame(results)
-                df = df[['keyword', 'source', 'position', 'title', 'url', 'snippet', 'date', 'timestamp']]
-                df.columns = ['Keyword', 'Motore', 'Posizione', 'Titolo', 'URL', 'Snippet', 'Data Pubblicazione', 'Timestamp']
+                df_all = pd.DataFrame(results)
                 
-                # Funzione per parsare le date
-                def parse_date(date_str):
-                    if date_str == 'N/A' or not date_str:
-                        return pd.Timestamp('1900-01-01')
-                    try:
-                        parsed = pd.to_datetime(date_str, errors='coerce')
-                        if pd.isna(parsed):
-                            return pd.Timestamp('1900-01-01')
-                        return parsed
-                    except:
-                        return pd.Timestamp('1900-01-01')
+                # Foglio Google (solo risultati organici)
+                google_results = df_all[df_all['source'].str.contains('Google', na=False)]
+                if not google_results.empty:
+                    google_results = google_results[['keyword', 'position', 'title', 'url', 'snippet', 'date', 'timestamp']]
+                    google_results.to_excel(writer, sheet_name='Google', index=False)
+                    logging.info(f"  Foglio Google: {len(google_results)} risultati")
                 
-                # Crea colonne temporanee per ordinamento
-                df['_date_sort'] = df['Data Pubblicazione'].apply(parse_date)
-                df['_source_sort'] = df['Motore'].map({'Google': 0, 'Bing': 1})
-                
-                # ORDINE CORRETTO:
-                # 1) Keyword alfabetico (ASC)
-                # 2) Motore: Google=0, Bing=1 (ASC = Google prima)
-                # 3) Data: DESC (più recente prima)
-                df = df.sort_values(
-                    ['Keyword', '_source_sort', '_date_sort'], 
-                    ascending=[True, True, False]  # Keyword ASC, Motore ASC (Google prima), Data DESC
-                )
-                
-                # Rimuovi colonne temporanee
-                df = df.drop(['_date_sort', '_source_sort'], axis=1)
-                df.reset_index(drop=True, inplace=True)
-            else:
-                df = pd.DataFrame(columns=['Keyword', 'Motore', 'Posizione', 'Titolo', 'URL', 'Snippet', 'Data Pubblicazione', 'Timestamp'])
+                # Foglio Bing
+                bing_results = df_all[df_all['source'].str.contains('Bing', na=False)]
+                if not bing_results.empty:
+                    bing_results = bing_results[['keyword', 'position', 'title', 'url', 'snippet', 'date', 'timestamp']]
+                    bing_results.to_excel(writer, sheet_name='Bing', index=False)
+                    logging.info(f"  Foglio Bing: {len(bing_results)} risultati")
             
-            df.to_excel(writer, sheet_name='Dettaglio SERP', index=False)
-            
-            # Foglio 2 - Summary
+            # Foglio riassunto
             if summary:
-                df_sum = pd.DataFrame([{
-                    'Keyword': s['Keyword'], 'Risultati Google': s['Risultati Google'],
-                    'Risultati Bing': s['Risultati Bing'], 'Timestamp': s['Timestamp']
+                summary_df = pd.DataFrame([{
+                    'Keyword': s['Keyword'],
+                    'Risultati Google': s['Risultati Google'],
+                    'Risultati Bing': s['Risultati Bing'],
+                    'Timestamp': s['Timestamp']
                 } for s in summary])
-            else:
-                df_sum = pd.DataFrame(columns=['Keyword', 'Risultati Google', 'Risultati Bing', 'Timestamp'])
-            df_sum.to_excel(writer, sheet_name='Summary', index=False)
+                summary_df.to_excel(writer, sheet_name='Riepilogo', index=False)
             
-            # Foglio 3 - Google Immagini (se presente)
-            if image_results and len(image_results) > 0:
-                df_img = pd.DataFrame(image_results)
-                df_img = df_img[['keyword', 'position', 'title', 'url', 'thumbnail', 'source_url', 'timestamp']]
-                df_img.columns = ['Keyword', 'Posizione', 'Titolo', 'URL Immagine', 'Thumbnail', 'Fonte', 'Timestamp']
-                df_img = df_img.sort_values(['Keyword', 'Posizione'])
-                df_img.to_excel(writer, sheet_name='Google Immagini', index=False)
+            # Foglio Google News (separato)
+            if news:
+                df_news = pd.DataFrame(news)
+                df_news = df_news[['keyword', 'position', 'title', 'url', 'snippet', 'source_name', 'date', 'timestamp']]
+                df_news.to_excel(writer, sheet_name='Google News', index=False)
+                logging.info(f"  Foglio Google News: {len(df_news)} notizie")
             
-            # Foglio 4 - Risposte AI (SEMPRE presente, anche se vuoto)
-            if ai_results and len(ai_results) > 0:
-                ai_data = []
-                for item in ai_results:
-                    if item.get('ai_overview_text'):
-                        ai_data.append({
-                            'Keyword': item['keyword'],
-                            'Tipo AI': 'Google AI Overview',
-                            'Risposta': item.get('ai_overview_text', 'N/A'),
-                            'Fonti': ', '.join([s.get('title', '') for s in item.get('ai_overview_sources', [])[:5]]) if item.get('ai_overview_sources') else 'N/A',
-                            'Timestamp': item['timestamp']
-                        })
-                    if item.get('bing_chat_text'):
-                        ai_data.append({
-                            'Keyword': item['keyword'],
-                            'Tipo AI': 'Bing Chat (GPT-4)',
-                            'Risposta': item.get('bing_chat_text', 'N/A'),
-                            'Fonti': ', '.join([s.get('title', '') for s in item.get('bing_chat_sources', [])[:5]]) if item.get('bing_chat_sources') else 'N/A',
-                            'Timestamp': item['timestamp']
-                        })
-                
-                if ai_data:
-                    df_ai = pd.DataFrame(ai_data)
-                else:
-                    # Foglio vuoto con messaggio
-                    df_ai = pd.DataFrame([{
-                        'Keyword': 'N/A',
-                        'Tipo AI': 'Nessun risultato',
-                        'Risposta': 'Non sono stati trovati risultati AI per questa ricerca. Le risposte AI potrebbero non essere disponibili per tutte le keywords.',
-                        'Fonti': 'N/A',
-                        'Timestamp': datetime.now().isoformat()
-                    }])
-            else:
-                # Nessun AI richiesto - foglio con messaggio
-                df_ai = pd.DataFrame([{
-                    'Keyword': 'N/A',
-                    'Tipo AI': 'Non richiesto',
-                    'Risposta': 'La ricerca AI non è stata attivata per questa analisi. Spunta la checkbox "Includi risposte AI" per ottenere risposte da Google AI Overview e Bing Chat.',
-                    'Fonti': 'N/A',
-                    'Timestamp': datetime.now().isoformat()
-                }])
-            
-            df_ai.to_excel(writer, sheet_name='Risposte AI', index=False)
-            
-            # Foglio 5 - Statistiche (ultimo)
-            total_g = sum(s['Risultati Google'] for s in summary) if summary else 0
-            total_b = sum(s['Risultati Bing'] for s in summary) if summary else 0
-            avg_pos = sum(r['position'] for r in results) / len(results) if results else 0
-            total_images = len(image_results) if image_results else 0
-            total_ai = len([item for item in (ai_results or []) if item.get('ai_overview_text') or item.get('bing_chat_text')])
-            
-            metrics = ['Keywords Totali', 'Notizie Google raccolte', 'Notizie Bing raccolte', 
-                      'Posizione media SERP', 'Ultima Analisi']
-            values = [len(summary) if summary else 0, total_g, total_b, f"{avg_pos:.1f}", 
-                     datetime.now().isoformat()]
-            
-            if total_images > 0:
-                metrics.append('Immagini Google raccolte')
-                values.append(total_images)
-            
-            if total_ai > 0:
-                metrics.append('Risposte AI raccolte')
-                values.append(total_ai)
-            
-            df_stats = pd.DataFrame({
-                'Metrica': metrics,
-                'Valore': values
-            })
-            df_stats.to_excel(writer, sheet_name='Statistiche', index=False)
-        logging.info("✓ Excel salvato")
+            # Foglio immagini (se richiesto)
+            if images:
+                df_images = pd.DataFrame(images)
+                df_images.to_excel(writer, sheet_name='Immagini', index=False)
+                logging.info(f"  Foglio Immagini: {len(df_images)} immagini")
+        
+        logging.info(f"✓ Risultati salvati in {EXCEL_FILE}")
     except Exception as e:
-        logging.error(f"✗ Errore Excel: {e}")
+        logging.error(f"✗ Errore salvataggio Excel: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
 
-def send_email(summary, recipients, image_summary=None, ai_summary=None):
-    """Invia email via Mailgun API a più destinatari con report e Excel allegato"""
+def send_email(summary_data, recipients, image_summary=None, news_summary=None):
+    """Invia email con report via Mailgun"""
+    
+    api_key = os.getenv('MAILGUN_API_KEY')
+    domain = os.getenv('MAILGUN_DOMAIN')
+    
+    if not api_key or not domain:
+        logging.warning("Mailgun non configurato - email non inviata")
+        return
+    
+    if not recipients:
+        logging.warning("Nessun destinatario specificato")
+        return
+    
     try:
-        api_key = os.getenv('MAILGUN_API_KEY')
-        domain = os.getenv('MAILGUN_DOMAIN')
-        
-        # Parse recipients (può essere stringa con virgole o lista)
-        if isinstance(recipients, str):
-            recipient_list = [email.strip() for email in recipients.split(',') if email.strip()]
-        else:
-            recipient_list = recipients
-        
+        recipient_list = [r.strip() for r in recipients.split(',') if r.strip()]
         if not recipient_list:
-            logging.warning("⚠ Nessun destinatario specificato - skip invio")
-            return
-        
-        logging.info(f"Tentativo invio email via Mailgun API...")
-        logging.info(f"API Key configurata: {api_key is not None}")
-        logging.info(f"Domain configurato: {domain is not None}")
-        logging.info(f"Destinatari: {', '.join(recipient_list)}")
-        
-        if not all([api_key, domain]):
-            logging.warning("⚠ Mailgun non configurato correttamente - skip invio")
             return
         
         # Costruisci HTML email
-        html = "<html><body style='font-family: Arial, sans-serif;'>"
-        html += "<h2>📊 Report SERP Monitoring</h2>"
-        html += f"<p><em>Data: {datetime.now().strftime('%d/%m/%Y alle %H:%M')}</em></p>"
+        html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .header { background: linear-gradient(135deg, #a4404e 0%, #26406b 100%); 
+                         color: white; padding: 30px; text-align: center; }
+                .content { padding: 20px; }
+                .keyword { background: #f8f9fa; padding: 15px; margin: 15px 0; 
+                          border-left: 4px solid #a4404e; }
+                .stats { display: flex; gap: 20px; margin-top: 10px; }
+                .stat { background: white; padding: 10px; border-radius: 5px; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>📊 SERP Monitoring Report</h1>
+                <p>""" + datetime.now().strftime('%d/%m/%Y %H:%M') + """</p>
+            </div>
+            <div class="content">
+                <h2>Riepilogo Analisi</h2>
+        """
         
-        for item in summary:
-            keyword = item['Keyword']
-            total_google = len(item.get('google_results', []))
-            total_bing = len(item.get('bing_results', []))
+        # Aggiungi risultati per keyword
+        for item in summary_data:
+            html += f"""
+                <div class="keyword">
+                    <h3>🔑 {item['Keyword']}</h3>
+                    <div class="stats">
+                        <div class="stat">
+                            <strong>Google:</strong> {item['Risultati Google']} risultati
+                        </div>
+                        <div class="stat">
+                            <strong>Bing:</strong> {item['Risultati Bing']} risultati
+                        </div>
+                    </div>
+            """
             
-            html += f"<hr><h3>🔑 Keyword: {keyword}</h3>"
-            
-            # GOOGLE - Numero totale + primi 10 link (ordinati per data)
-            google_results_sorted = sorted(
-                item.get('google_results', []),
-                key=lambda x: x.get('date', '1900-01-01') if x.get('date') not in ['N/A', ''] else '1900-01-01',
-                reverse=True
-            )
-            
-            html += f"<p><strong>Google:</strong> {total_google} risultati trovati</p>"
-            if total_google > 0:
-                html += "<ol>"
-                for idx, r in enumerate(google_results_sorted[:10], 1):
-                    if r['url'] != 'N/A':
-                        date_label = f" <em>({r.get('date', 'N/A')})</em>" if r.get('date') and r.get('date') != 'N/A' else ""
-                        html += f'<li><a href="{r["url"]}">{r["title"]}</a>{date_label}</li>'
+            # Top 3 risultati Google
+            if item.get('google_results') and len(item['google_results']) > 0:
+                html += "<h4 style='margin-top: 15px;'>Top 3 Google:</h4><ol>"
+                for r in item['google_results'][:3]:
+                    html += f"<li><a href='{r['url']}'>{r['title']}</a>"
+                    if r.get('date') and r['date'] != 'N/A':
+                        html += f" <em style='color: #666;'>({r['date']})</em>"
+                    html += "</li>"
                 html += "</ol>"
-                if total_google > 10:
-                    html += f"<p><em>... e altri {total_google - 10} risultati (vedi Excel)</em></p>"
             
-            # BING - Numero totale + primi 10 link (ordinati per data)
-            bing_results_sorted = sorted(
-                item.get('bing_results', []),
-                key=lambda x: x.get('date', '1900-01-01') if x.get('date') not in ['N/A', ''] else '1900-01-01',
-                reverse=True
-            )
-            
-            html += f"<p><strong>Bing:</strong> {total_bing} risultati trovati</p>"
-            if total_bing > 0:
-                html += "<ol>"
-                for idx, r in enumerate(bing_results_sorted[:10], 1):
-                    if r['url'] != 'N/A':
-                        date_label = f" <em>({r.get('date', 'N/A')})</em>" if r.get('date') and r.get('date') != 'N/A' else ""
-                        html += f'<li><a href="{r["url"]}">{r["title"]}</a>{date_label}</li>'
+            # Top 3 risultati Bing
+            if item.get('bing_results') and len(item['bing_results']) > 0:
+                html += "<h4 style='margin-top: 15px;'>Top 3 Bing:</h4><ol>"
+                for r in item['bing_results'][:3]:
+                    html += f"<li><a href='{r['url']}'>{r['title']}</a>"
+                    if r.get('date') and r['date'] != 'N/A':
+                        html += f" <em style='color: #666;'>({r['date']})</em>"
+                    html += "</li>"
                 html += "</ol>"
-                if total_bing > 10:
-                    html += f"<p><em>... e altri {total_bing - 10} risultati (vedi Excel)</em></p>"
+            
+            html += "</div>"
         
-        # Sezione immagini (se presente)
+        # Aggiungi news se presenti
+        if news_summary and len(news_summary) > 0:
+            html += "<hr><h2>📰 Ultime Notizie</h2>"
+            for news_item in news_summary:
+                if news_item.get('news') and len(news_item['news']) > 0:
+                    html += f"<div class='keyword'><h3>🔑 {news_item['keyword']}</h3><ul>"
+                    for news in news_item['news'][:5]:  # Top 5 news
+                        html += f"""
+                            <li>
+                                <a href='{news['url']}'>{news['title']}</a><br>
+                                <small style='color: #666;'>{news['source_name']} - {news['date']}</small>
+                            </li>
+                        """
+                    html += "</ul></div>"
+        
+        # Aggiungi immagini se presenti
         if image_summary and len(image_summary) > 0:
-            html += "<hr><h2>🖼️ Google Immagini</h2>"
-            for item in image_summary:
-                keyword = item['keyword']
-                images = item['images']
-                html += f"<h3>🔑 Keyword: {keyword}</h3>"
-                html += f"<p><strong>Immagini trovate:</strong> {len(images)}</p>"
-                if len(images) > 0:
-                    html += "<div style='display: flex; flex-wrap: wrap; gap: 10px;'>"
-                    for img in images[:6]:
-                        if img['thumbnail'] != 'N/A':
-                            html += f'<div style="width: 150px;"><a href="{img["url"]}"><img src="{img["thumbnail"]}" style="width: 100%; border-radius: 5px;"></a><p style="font-size: 0.8em; margin: 5px 0;">{img["title"][:50]}...</p></div>'
-                    html += "</div>"
-                    if len(images) > 6:
-                        html += f"<p><em>... e altre {len(images) - 6} immagini (vedi Excel)</em></p>"
-        
-        # Sezione AI (se presente)
-        if ai_summary and len(ai_summary) > 0:
-            html += "<hr><h2>🤖 Risposte AI</h2>"
-            for item in ai_summary:
-                keyword = item['keyword']
-                html += f"<h3>🔑 Keyword: {keyword}</h3>"
-                
-                # AI Overview
-                if item.get('ai_overview_text'):
-                    html += "<div style='background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 10px 0;'>"
-                    html += "<h4 style='color: #1976d2; margin: 0 0 10px 0;'>✨ Google AI Overview</h4>"
-                    ai_text = item['ai_overview_text'][:500]
-                    if len(item['ai_overview_text']) > 500:
-                        ai_text += "..."
-                    html += f"<p style='margin: 0;'>{ai_text}</p>"
-                    if item.get('ai_overview_sources'):
-                        html += "<p style='margin: 10px 0 0 0; font-size: 0.9em;'><strong>Fonti:</strong> "
-                        html += ", ".join([f"<a href='{s.get('link', '#')}'>{s.get('title', 'N/A')}</a>" for s in item['ai_overview_sources'][:3]])
-                        html += "</p>"
-                    html += "</div>"
-                
-                # Bing Chat
-                if item.get('bing_chat_text'):
-                    html += "<div style='background: #fff3e0; padding: 15px; border-radius: 8px; margin: 10px 0;'>"
-                    html += "<h4 style='color: #f57c00; margin: 0 0 10px 0;'>🤖 Bing Chat (GPT-4)</h4>"
-                    chat_text = item['bing_chat_text'][:500]
-                    if len(item['bing_chat_text']) > 500:
-                        chat_text += "..."
-                    html += f"<p style='margin: 0;'>{chat_text}</p>"
-                    if item.get('bing_chat_sources'):
-                        html += "<p style='margin: 10px 0 0 0; font-size: 0.9em;'><strong>Fonti:</strong> "
-                        html += ", ".join([f"<a href='{s.get('url', '#')}'>{s.get('title', 'N/A')}</a>" for s in item['bing_chat_sources'][:3]])
-                        html += "</p>"
-                    html += "</div>"
+            html += "<hr><h2>🖼️ Immagini trovate</h2>"
+            for img_item in image_summary:
+                if img_item.get('images') and len(img_item['images']) > 0:
+                    html += f"<div class='keyword'><h3>🔑 {img_item['keyword']}</h3>"
+                    html += f"<p>Trovate {len(img_item['images'])} immagini</p></div>"
         
         html += "<hr><p><strong>📎 Report completo con TUTTI i risultati nel file Excel allegato.</strong></p>"
         html += "</body></html>"
         
-        # Prepara richiesta Mailgun (invia a tutti i destinatari insieme)
+        # Prepara richiesta Mailgun
         url = f"https://api.mailgun.net/v3/{domain}/messages"
         
         data = {
             'from': f'SERP Monitor <mailgun@{domain}>',
-            'to': recipient_list,  # Lista di email
+            'to': recipient_list,
             'subject': f"SERP Report - {datetime.now().strftime('%d/%m/%Y')}",
             'html': html
         }
@@ -693,14 +561,14 @@ def send_email(summary, recipients, image_summary=None, ai_summary=None):
         import traceback
         logging.error(traceback.format_exc())
 
-def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None, include_images=False, include_ai=False):
+def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None, include_images=False, include_news=False):
     global analysis_status
     all_results = []
     all_images = []
-    all_ai = []
+    all_news = []
     summary_data = []
     image_summary = []
-    ai_summary = []
+    news_summary = []
     total = len(keywords)
     
     for idx, keyword in enumerate(keywords, 1):
@@ -717,9 +585,12 @@ def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None,
         
         all_results.extend(combined)
         summary_data.append({
-            'Keyword': keyword, 'Risultati Google': len(google_results),
-            'Risultati Bing': len(bing_results), 'Timestamp': datetime.now().isoformat(),
-            'google_results': google_results, 'bing_results': bing_results
+            'Keyword': keyword, 
+            'Risultati Google': len(google_results),
+            'Risultati Bing': len(bing_results), 
+            'Timestamp': datetime.now().isoformat(),
+            'google_results': google_results, 
+            'bing_results': bing_results
         })
         analysis_status['results'].append(summary_data[-1])
         
@@ -735,38 +606,28 @@ def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None,
                 'images': image_results
             })
         
-        # Cerca risposte AI se richiesto
-        if include_ai:
-            ai_overview = get_ai_overview(keyword, sites=sites)
-            bing_chat = get_bing_chat(keyword, sites=sites)
-            
-            ai_item = {
+        # Cerca news se richiesto
+        if include_news:
+            news_results = search_google_news(keyword, num_results=num_results, time_filter=time_filter, sites=sites)
+            for news in news_results:
+                news['keyword'] = keyword
+                news['timestamp'] = datetime.now().isoformat()
+            all_news.extend(news_results)
+            news_summary.append({
                 'keyword': keyword,
-                'timestamp': datetime.now().isoformat()
-            }
-            
-            if ai_overview:
-                ai_item['ai_overview_text'] = ai_overview['text']
-                ai_item['ai_overview_sources'] = ai_overview['sources']
-            
-            if bing_chat:
-                ai_item['bing_chat_text'] = bing_chat['text']
-                ai_item['bing_chat_sources'] = bing_chat['sources']
-            
-            if ai_overview or bing_chat:
-                all_ai.append(ai_item)
-                ai_summary.append(ai_item)
+                'news': news_results
+            })
     
-    save_results(all_results, summary_data, all_images if include_images else None, all_ai if include_ai else None)
+    save_results(all_results, summary_data, all_images if include_images else None, all_news if include_news else None)
     if emails:
-        send_email(summary_data, emails, image_summary if include_images else None, ai_summary if include_ai else None)
+        send_email(summary_data, emails, image_summary if include_images else None, news_summary if include_news else None)
     
     analysis_status['running'] = False
     analysis_status['progress'] = 100
     
-    # Aggiungi risposte AI allo status per mostrarle nell'interfaccia
-    if include_ai and len(ai_summary) > 0:
-        analysis_status['ai_responses'] = ai_summary
+    # Aggiungi news allo status per mostrarle nell'interfaccia
+    if include_news and len(news_summary) > 0:
+        analysis_status['news_results'] = news_summary
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -801,13 +662,13 @@ def analyze():
     num_results = data.get('num_results', 30)
     sites = data.get('sites', [])
     include_images = data.get('include_images', False)
-    include_ai = data.get('include_ai', False)
+    include_news = data.get('include_news', False)
     
     if not keywords:
         return jsonify({'error': 'Nessuna keyword'}), 400
     
     analysis_status = {'running': True, 'progress': 0, 'current_keyword': '', 'results': []}
-    thread = threading.Thread(target=run_analysis, args=(keywords, emails, time_filter, num_results, sites, include_images, include_ai))
+    thread = threading.Thread(target=run_analysis, args=(keywords, emails, time_filter, num_results, sites, include_images, include_news))
     thread.daemon = True
     thread.start()
     return jsonify({'status': 'started'})
