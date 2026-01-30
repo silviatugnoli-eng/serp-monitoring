@@ -257,7 +257,7 @@ def search_google_news(keyword, num_results=10, time_filter=None, sites=None):
             params = {
                 'engine': 'google',
                 'q': query,
-                'tbm': 'nws',  # Ricerca news
+                'tbm': 'nws',  # ⭐ Ricerca news
                 'start': start,
                 'num': 10,
                 'hl': google_config['hl'],
@@ -289,7 +289,8 @@ def search_google_news(keyword, num_results=10, time_filter=None, sites=None):
             
             for idx, item in enumerate(news_results, start + 1):
                 # Estrai informazioni dalla news
-                source = item.get('source', {}).get('name', 'N/A')
+                source = item.get('source', {})
+                source_name = source.get('name', 'N/A') if isinstance(source, dict) else 'N/A'
                 date = item.get('date', 'N/A')
                 
                 all_news.append({
@@ -297,7 +298,7 @@ def search_google_news(keyword, num_results=10, time_filter=None, sites=None):
                     'title': item.get('title', 'N/A'),
                     'url': item.get('link', 'N/A'),
                     'snippet': item.get('snippet', ''),
-                    'source_name': source,
+                    'source_name': source_name,
                     'date': date,
                     'thumbnail': item.get('thumbnail', ''),
                     'type': 'Google News'
@@ -314,6 +315,8 @@ def search_google_news(keyword, num_results=10, time_filter=None, sites=None):
         
     except Exception as e:
         logging.error(f"✗ Errore Google News: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
         return []
 
 def search_google_images(keyword, num_results=30, sites=None):
@@ -367,10 +370,16 @@ def search_google_images(keyword, num_results=30, sites=None):
         return []
 
 def save_results(results, summary, images=None, news=None):
-    """Salva risultati in Excel con fogli separati per Google, Bing e News"""
+    """
+    Salva risultati in Excel con fogli separati per Google, Bing e News
+    
+    🔧 FIX: Corretto il salvataggio del foglio Google News
+    """
     try:
+        logging.info(f"💾 Salvataggio risultati in Excel...")
+        
         with pd.ExcelWriter(EXCEL_FILE, engine='openpyxl') as writer:
-            # Separa i risultati per fonte
+            # Separa i risultati per fonte (solo risultati organici)
             if results:
                 df_all = pd.DataFrame(results)
                 
@@ -379,14 +388,24 @@ def save_results(results, summary, images=None, news=None):
                 if not google_results.empty:
                     google_results = google_results[['keyword', 'position', 'title', 'url', 'snippet', 'date', 'timestamp']]
                     google_results.to_excel(writer, sheet_name='Google', index=False)
-                    logging.info(f"  Foglio Google: {len(google_results)} risultati")
+                    logging.info(f"  ✓ Foglio Google: {len(google_results)} risultati")
                 
                 # Foglio Bing
                 bing_results = df_all[df_all['source'].str.contains('Bing', na=False)]
                 if not bing_results.empty:
                     bing_results = bing_results[['keyword', 'position', 'title', 'url', 'snippet', 'date', 'timestamp']]
                     bing_results.to_excel(writer, sheet_name='Bing', index=False)
-                    logging.info(f"  Foglio Bing: {len(bing_results)} risultati")
+                    logging.info(f"  ✓ Foglio Bing: {len(bing_results)} risultati")
+            
+            # 🔧 FIX: Foglio Google News (CORRETTO)
+            # Le news hanno una struttura diversa, non vanno filtrate da 'results'
+            if news and len(news) > 0:
+                df_news = pd.DataFrame(news)
+                # Seleziona solo le colonne rilevanti per le news
+                news_columns = ['keyword', 'position', 'title', 'url', 'snippet', 'source_name', 'date', 'timestamp']
+                df_news = df_news[news_columns]
+                df_news.to_excel(writer, sheet_name='Google News', index=False)
+                logging.info(f"  ✓ Foglio Google News: {len(df_news)} notizie")
             
             # Foglio riassunto
             if summary:
@@ -397,23 +416,18 @@ def save_results(results, summary, images=None, news=None):
                     'Timestamp': s['Timestamp']
                 } for s in summary])
                 summary_df.to_excel(writer, sheet_name='Riepilogo', index=False)
-            
-            # Foglio Google News (separato)
-            if news:
-                df_news = pd.DataFrame(news)
-                df_news = df_news[['keyword', 'position', 'title', 'url', 'snippet', 'source_name', 'date', 'timestamp']]
-                df_news.to_excel(writer, sheet_name='Google News', index=False)
-                logging.info(f"  Foglio Google News: {len(df_news)} notizie")
+                logging.info(f"  ✓ Foglio Riepilogo: {len(summary_df)} keywords")
             
             # Foglio immagini (se richiesto)
-            if images:
+            if images and len(images) > 0:
                 df_images = pd.DataFrame(images)
                 df_images.to_excel(writer, sheet_name='Immagini', index=False)
-                logging.info(f"  Foglio Immagini: {len(df_images)} immagini")
+                logging.info(f"  ✓ Foglio Immagini: {len(df_images)} immagini")
         
-        logging.info(f"✓ Risultati salvati in {EXCEL_FILE}")
+        logging.info(f"✅ Risultati salvati con successo in {EXCEL_FILE}")
+        
     except Exception as e:
-        logging.error(f"✗ Errore salvataggio Excel: {e}")
+        logging.error(f"❌ Errore salvataggio Excel: {e}")
         import traceback
         logging.error(traceback.format_exc())
 
@@ -562,10 +576,13 @@ def send_email(summary_data, recipients, image_summary=None, news_summary=None):
         logging.error(traceback.format_exc())
 
 def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None, include_images=False, include_news=False):
+    """
+    🔧 FIX: Corretto il passaggio delle news alla funzione save_results
+    """
     global analysis_status
     all_results = []
     all_images = []
-    all_news = []
+    all_news = []  # ⭐ Lista separata per le news
     summary_data = []
     image_summary = []
     news_summary = []
@@ -575,6 +592,7 @@ def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None,
         analysis_status['current_keyword'] = keyword
         analysis_status['progress'] = int((idx / total) * 100)
         
+        # Ricerca organica Google e Bing
         google_results = search_google(keyword, num_results=num_results, time_filter=time_filter, sites=sites)
         bing_results = search_bing(keyword, num_results=num_results, time_filter=time_filter, sites=sites)
         combined = google_results + bing_results
@@ -606,19 +624,31 @@ def run_analysis(keywords, emails, time_filter=None, num_results=30, sites=None,
                 'images': image_results
             })
         
-        # Cerca news se richiesto
+        # 🔧 FIX: Cerca news se richiesto
         if include_news:
+            logging.info(f"📰 Cercando news per: {keyword}")
             news_results = search_google_news(keyword, num_results=num_results, time_filter=time_filter, sites=sites)
+            
+            # Aggiungi keyword e timestamp a ogni news
             for news in news_results:
                 news['keyword'] = keyword
                 news['timestamp'] = datetime.now().isoformat()
-            all_news.extend(news_results)
+            
+            all_news.extend(news_results)  # ⭐ Aggiungi alla lista separata delle news
             news_summary.append({
                 'keyword': keyword,
                 'news': news_results
             })
+            logging.info(f"  ✓ Trovate {len(news_results)} news per '{keyword}'")
     
-    save_results(all_results, summary_data, all_images if include_images else None, all_news if include_news else None)
+    # 🔧 FIX: Passa all_news come parametro separato (NON dentro all_results)
+    save_results(
+        all_results,  # Solo risultati organici Google/Bing
+        summary_data, 
+        all_images if include_images else None, 
+        all_news if include_news else None  # ⭐ Passa le news separatamente
+    )
+    
     if emails:
         send_email(summary_data, emails, image_summary if include_images else None, news_summary if include_news else None)
     
