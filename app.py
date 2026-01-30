@@ -66,6 +66,8 @@ def search_google(keyword, num_results=30, time_filter=None, sites=None):
     """
     Cerca su Google con paginazione per ottenere più di 10 risultati.
     Configurabile tramite SEARCH_ENGINES['google']
+    
+    🔧 FIX: Non si ferma più alla prima pagina vuota
     """
     if not SEARCH_ENGINES['google']['enabled']:
         return []
@@ -84,6 +86,7 @@ def search_google(keyword, num_results=30, time_filter=None, sites=None):
     
     all_results = []
     pages_needed = (num_results + 9) // 10
+    empty_pages = 0  # 🔧 Conta pagine vuote consecutive
     
     try:
         google_config = SEARCH_ENGINES['google']
@@ -113,9 +116,23 @@ def search_google(keyword, num_results=30, time_filter=None, sites=None):
             
             organic_results = data.get('organic_results', [])
             
+            # 🔧 FIX: Non fermarti alla prima pagina vuota
             if not organic_results:
-                logging.info(f"  Pagina {page+1}: nessun risultato, stop paginazione")
-                break
+                empty_pages += 1
+                logging.warning(f"  Pagina {page+1}: nessun risultato (pagine vuote consecutive: {empty_pages})")
+                
+                # Fermati solo dopo 2 pagine vuote consecutive
+                if empty_pages >= 2:
+                    logging.info(f"  Stop: {empty_pages} pagine vuote consecutive")
+                    break
+                
+                # Continua a cercare nella prossima pagina
+                if page < pages_needed - 1:
+                    time.sleep(0.5)
+                continue
+            
+            # Reset contatore se troviamo risultati
+            empty_pages = 0
             
             for idx, item in enumerate(organic_results, start + 1):
                 pub_date = item.get('date', '')
@@ -131,7 +148,12 @@ def search_google(keyword, num_results=30, time_filter=None, sites=None):
                     'source': f"Google.{google_config['gl']}"
                 })
             
-            logging.info(f"  Pagina {page+1}: +{len(organic_results)} risultati")
+            logging.info(f"  Pagina {page+1}: +{len(organic_results)} risultati (totale: {len(all_results)})")
+            
+            # 🔧 Fermati se abbiamo raggiunto il numero richiesto
+            if len(all_results) >= num_results:
+                logging.info(f"  ✓ Raggiunto target di {num_results} risultati")
+                break
             
             if page < pages_needed - 1:
                 time.sleep(0.5)
@@ -141,12 +163,16 @@ def search_google(keyword, num_results=30, time_filter=None, sites=None):
         
     except Exception as e:
         logging.error(f"✗ Errore Google: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
         return all_results
 
 def search_bing(keyword, num_results=30, time_filter=None, sites=None):
     """
     Cerca su Bing con paginazione.
     Configurabile tramite SEARCH_ENGINES['bing']
+    
+    🔧 FIX: Non si ferma più alla prima pagina vuota
     """
     if not SEARCH_ENGINES['bing']['enabled']:
         return []
@@ -164,6 +190,7 @@ def search_bing(keyword, num_results=30, time_filter=None, sites=None):
     
     all_results = []
     pages_needed = (num_results + 9) // 10
+    empty_pages = 0  # 🔧 Conta pagine vuote consecutive
     
     try:
         bing_config = SEARCH_ENGINES['bing']
@@ -188,9 +215,23 @@ def search_bing(keyword, num_results=30, time_filter=None, sites=None):
             
             organic_results = data.get('organic_results', [])
             
+            # 🔧 FIX: Non fermarti alla prima pagina vuota
             if not organic_results:
-                logging.info(f"  Pagina {page+1}: nessun risultato, stop paginazione")
-                break
+                empty_pages += 1
+                logging.warning(f"  Pagina {page+1}: nessun risultato (pagine vuote consecutive: {empty_pages})")
+                
+                # Fermati solo dopo 2 pagine vuote consecutive
+                if empty_pages >= 2:
+                    logging.info(f"  Stop: {empty_pages} pagine vuote consecutive")
+                    break
+                
+                # Continua a cercare nella prossima pagina
+                if page < pages_needed - 1:
+                    time.sleep(0.5)
+                continue
+            
+            # Reset contatore se troviamo risultati
+            empty_pages = 0
             
             for idx, item in enumerate(organic_results, offset + 1):
                 pub_date = item.get('date', '')
@@ -206,7 +247,12 @@ def search_bing(keyword, num_results=30, time_filter=None, sites=None):
                     'source': f"Bing.{bing_config['cc']}"
                 })
             
-            logging.info(f"  Pagina {page+1}: +{len(organic_results)} risultati")
+            logging.info(f"  Pagina {page+1}: +{len(organic_results)} risultati (totale: {len(all_results)})")
+            
+            # 🔧 Fermati se abbiamo raggiunto il numero richiesto
+            if len(all_results) >= num_results:
+                logging.info(f"  ✓ Raggiunto target di {num_results} risultati")
+                break
             
             if page < pages_needed - 1:
                 time.sleep(0.5)
@@ -216,6 +262,8 @@ def search_bing(keyword, num_results=30, time_filter=None, sites=None):
         
     except Exception as e:
         logging.error(f"✗ Errore Bing: {e}")
+        import traceback
+        logging.error(traceback.format_exc())
         return all_results
 
 def search_google_news(keyword, num_results=10, time_filter=None, sites=None):
