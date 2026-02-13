@@ -70,10 +70,35 @@ def deduplicate(results):
 #   - ideale per: "cosa e uscito oggi/questa settimana sulla keyword X"
 # =============================================================================
 
+def resolve_rss_url(redirect_url, timeout=6):
+    """
+    Risolve l'URL di redirect di Google News RSS all'URL reale dell'articolo.
+    Google News RSS restituisce link tipo news.google.com/rss/articles/CBMi...
+    che sono redirect verso l'URL vero del sito editore.
+    """
+    if not redirect_url or 'news.google.com' not in redirect_url:
+        return redirect_url
+    try:
+        r = requests.head(redirect_url, allow_redirects=True, timeout=timeout,
+                          headers={'User-Agent': 'Mozilla/5.0 (compatible; SERP-Monitor/1.0)'})
+        final = r.url
+        # Talvolta HEAD non risolve; prova GET se siamo ancora su google
+        if 'google.com' in final:
+            r2 = requests.get(redirect_url, allow_redirects=True, timeout=timeout,
+                              headers={'User-Agent': 'Mozilla/5.0 (compatible; SERP-Monitor/1.0)'},
+                              stream=True)
+            final = r2.url
+            r2.close()
+        return final if final else redirect_url
+    except Exception:
+        return redirect_url   # fallback: mantieni URL redirect
+
+
 def search_rss(keyword, num_results=50, time_filter=None, sites=None):
     """
     Cerca su Google News RSS.
-    Restituisce lista di articoli ordinata per data discendente.
+    Restituisce lista di articoli ordinata per data discendente,
+    con URL REALI dell'articolo (redirect risolti).
     """
     query = keyword
 
@@ -105,7 +130,7 @@ def search_rss(keyword, num_results=50, time_filter=None, sites=None):
             return []
 
         items = channel.findall('item')
-        logging.info(f'  RSS: {len(items)} articoli nel feed')
+        logging.info(f'  RSS: {len(items)} articoli nel feed — risolvo redirect URL...')
 
         for i, item in enumerate(items, 1):
             title   = (item.findtext('title')       or '').strip()
@@ -117,6 +142,9 @@ def search_rss(keyword, num_results=50, time_filter=None, sites=None):
             source_name = (source_el.text.strip()
                            if source_el is not None and source_el.text
                            else 'N/A')
+
+            # ── Risolvi redirect → URL reale dell'articolo ─────────────────
+            real_url = resolve_rss_url(link)
 
             # Converte pubDate (RFC 2822) in datetime per ordinamento e display
             pub_dt = None
@@ -136,26 +164,27 @@ def search_rss(keyword, num_results=50, time_filter=None, sites=None):
             results.append({
                 'position':    i,
                 'title':       clean_title,
-                'url':         link,
+                'url':         real_url,          # ← URL reale, non redirect
+                'url_source':  link,              # ← link redirect originale (per debug)
                 'snippet':     clean_desc,
                 'date':        pub_dt.strftime('%d/%m/%Y %H:%M') if pub_dt else pub,
-                '_date_dt':    pub_dt,   # usato solo per sorting
+                '_date_dt':    pub_dt,
                 'source_name': source_name,
                 'source':      'Google News RSS',
             })
 
+            if i % 10 == 0:
+                logging.info(f'    ...risolti {i}/{len(items)} URL')
+
         # Ordina per data discendente (piu recente prima)
         results.sort(key=lambda x: x['_date_dt'] or datetime.min, reverse=True)
 
-        # Rimuovi campo interno
-        for r in results:
-            r.pop('_date_dt', None)
-
-        # Rinumera dopo il sort
+        # Rimuovi campo interno, rinumera
         for i, r in enumerate(results, 1):
+            r.pop('_date_dt', None)
             r['position'] = i
 
-        logging.info(f'  RSS: restituiti {min(len(results), num_results)} articoli ordinati per data')
+        logging.info(f'  ✓ RSS: {min(len(results), num_results)} articoli con URL reali')
         return results[:num_results]
 
     except ET.ParseError as e:
@@ -372,23 +401,40 @@ def save_results(google_results, bing_results, rss_results, summary, images=None
             # Foglio 1: RSS Cronologico (primo = piu importante)
             if rss_results:
                 df = pd.DataFrame(rss_results)
-                cols = [c for c in ['keyword','position','title','source_name','date','url','snippet','timestamp'] if c in df.columns]
+                # url = URL reale articolo; url_source = redirect google (opzionale)
+                cols = [c for c in ['keyword','position','title','source_name','date','url','snippet','url_source','timestamp'] if c in df.columns]
                 df[cols].to_excel(writer, sheet_name='RSS Cronologico', index=False)
-                logging.info(f'  ✓ RSS Cronologico: {len(df)} articoli')
+                logging.info(f'  ✓ RSS Cronologico: {len(df)} articoli (URL reali)')
 
-            # Foglio 2: Google SERP
+            # Foglio 2: Google SERP (panoramica rilevanza, non cronologico)
             if google_results:
                 df = pd.DataFrame(google_results)
                 cols = [c for c in ['keyword','position','title','url','snippet','date','timestamp'] if c in df.columns]
                 df[cols].to_excel(writer, sheet_name='Google SERP', index=False)
+                # Nota disclaimer
+                ws = writer.sheets['Google SERP']
+                ws.cell(row=1, column=len(cols)+2, value='⚠️ NOTA: date relative e approssimative (limite SerpAPI). Per date precise usa il foglio RSS Cronologico.')
                 logging.info(f'  ✓ Google SERP: {len(df)} risultati')
 
-            # Foglio 3: Bing SERP
+            # Foglio 3: Bing SERP — con disclaimer prominente
             if bing_results:
                 df = pd.DataFrame(bing_results)
                 cols = [c for c in ['keyword','position','title','url','snippet','date','timestamp'] if c in df.columns]
-                df[cols].to_excel(writer, sheet_name='Bing SERP', index=False)
-                logging.info(f'  ✓ Bing SERP: {len(df)} risultati')
+                no_date = df['date'].isna().sum() if 'date' in df.columns else 0
+                pct = int(no_date / len(df) * 100) if len(df) else 0
+
+                # Riga 1 = disclaimer, dati partono da riga 3
+                ws_bing = writer.book.create_sheet('Bing SERP')
+                disclaimer = (
+                    f'⚠️ DISCLAIMER BING: {no_date}/{len(df)} risultati ({pct}%) sono SENZA DATA. '
+                    f'Bing restituisce spesso contenuti evergreen (biografie, "chi è", pagine statiche) '
+                    f'anche con filtro temporale attivo. Non usare questo foglio per monitoraggio cronologico. '
+                    f'Per le ultime notizie usare il foglio "RSS Cronologico".'
+                )
+                ws_bing.cell(row=1, column=1, value=disclaimer)
+                # Scrivi dati da riga 3
+                df[cols].to_excel(writer, sheet_name='Bing SERP', startrow=2, index=False)
+                logging.info(f'  ✓ Bing SERP: {len(df)} risultati ({pct}% senza data — disclaimer aggiunto)')
 
             # Foglio 4: Riepilogo
             if summary:
