@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SERP Monitor - Analisi Reputazione</title>
     <style>
-        /* COLORI PERSONALIZZABILI - Modifica questi valori */
+        /* COLORI PERSONALIZZABILI */
         :root {
             --primary-color: #a4404e;
             --secondary-color: #26406b;
@@ -16,11 +16,7 @@
             --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
         
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
             font-family: var(--font-family);
@@ -29,10 +25,7 @@
             padding: 20px;
         }
         
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-        }
+        .container { max-width: 900px; margin: 0 auto; }
         
         .card {
             background: white;
@@ -56,9 +49,7 @@
             font-size: 1.1em;
         }
         
-        .form-group {
-            margin-bottom: 25px;
-        }
+        .form-group { margin-bottom: 25px; }
         
         label {
             display: block;
@@ -248,80 +239,76 @@
     <div class="container">
         <div class="card">
             <h1>🔍 SERP Monitor</h1>
-            <p class="subtitle">Analisi Reputazione Online su Google e Bing</p>
+            <p class="subtitle">Monitora la tua reputazione online su Google.it e Bing.it</p>
             
             <form id="analysisForm">
                 <div class="form-group">
-                    <label for="keywords">Keywords da analizzare</label>
+                    <label for="keywords">🔑 Keywords (una per riga, max 20)</label>
                     <textarea 
                         id="keywords" 
-                        rows="8" 
-                        placeholder="Inserisci una keyword per riga, esempio:&#10;Parola chiave 1&#10;Parola chiave 2&#10;Parola chiave 3"
+                        rows="5" 
+                        placeholder="Inserisci le parole chiave da monitorare, una per riga"
                         required
                     ></textarea>
-                    <p class="hint">💡 Una keyword per riga. Verranno cercate su Google e Bing.</p>
+                    <p class="hint">Inserisci le parole chiave da monitorare, una per riga</p>
                 </div>
 
                 <div class="form-group">
-                    <label for="sites">Limita ricerca a siti specifici (opzionale)</label>
+                    <label for="sites">🌐 Filtra per Siti (opzionale, uno per riga)</label>
                     <textarea 
                         id="sites" 
                         rows="4" 
-                        placeholder="Inserisci un dominio per riga, esempio:&#10;corriere.it&#10;repubblica.it&#10;ilpost.it&#10;ansa.it"
+                        placeholder="corriere.it&#10;repubblica.it&#10;ilpost.it"
                     ></textarea>
-                    <p class="hint">🌐 Se inserisci dei siti, la ricerca verrà limitata solo a quei domini. Lascia vuoto per cercare ovunque.</p>
+                    <p class="hint">Limita la ricerca a specifici domini (es: siti di news). Lascia vuoto per cercare ovunque.</p>
                 </div>
 
                 <div class="form-group">
-                    <label for="numResults">Numero di risultati per motore</label>
-                    <select id="numResults">
-                        <option value="10">⚡ 10 risultati (1 pagina, veloce)</option>
-                        <option value="20">📄 20 risultati (2 pagine)</option>
-                        <option value="30" selected>🎯 30 risultati (3 pagine, consigliato)</option>
+                    <label for="timeFilter">⏰ Filtro Temporale</label>
+                    <select id="timeFilter">
+                        <option value="">Tutte le date</option>
+                        <option value="day">Ultime 24 ore</option>
+                        <option value="week">Ultima settimana</option>
+                        <option value="month">Ultimo mese</option>
                     </select>
-                    <p class="hint">📊 Google ha cambiato le regole: max 10 risultati per pagina. Usiamo la paginazione per ottenere più risultati.</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="numResults">📊 Numero Risultati per Motore</label>
+                    <select id="numResults">
+                        <option value="10">10 risultati</option>
+                        <option value="20">20 risultati</option>
+                        <option value="30" selected>30 risultati</option>
+                    </select>
                 </div>
 
                 <div class="form-group">
                     <label style="display: flex; align-items: center; cursor: pointer;">
                         <input type="checkbox" id="includeImages" style="width: auto; margin-right: 10px; cursor: pointer;">
-                        <span>🖼️ Includi ricerca Google Immagini</span>
+                        <span>🖼️ Includi Immagini Google</span>
                     </label>
-                    <p class="hint">📸 Se attivato, cercherà anche immagini su Google. I risultati andranno in un foglio Excel separato.</p>
                 </div>
 
                 <div class="form-group">
                     <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="checkbox" id="includeAI" style="width: auto; margin-right: 10px; cursor: pointer;" checked>
-                        <span>🤖 Includi risposte AI (Google AI Overview + Bing Chat)</span>
+                        <input type="checkbox" id="includeNews" style="width: auto; margin-right: 10px; cursor: pointer;">
+                        <span>📰 Includi Google News</span>
                     </label>
-                    <p class="hint">✨ Se attivato, include le risposte AI generate dai motori di ricerca. Costo: +1-2 crediti per keyword.</p>
+                    <p class="hint">Le notizie mostrano i risultati dalla sezione "Notizie principali" di Google con le news più recenti</p>
                 </div>
                 
                 <div class="form-group">
-                    <label for="timeFilter">Periodo di ricerca</label>
-                    <select id="timeFilter">
-                        <option value="">📅 Tutte le notizie</option>
-                        <option value="day">🆕 Solo ultime 24 ore</option>
-                        <option value="week">📰 Ultima settimana</option>
-                        <option value="month">📊 Ultimo mese</option>
-                    </select>
-                    <p class="hint">⏰ Filtra i risultati per data di pubblicazione</p>
-                </div>
-                
-                <div class="form-group">
-                    <label for="emails">Email per ricevere i risultati (opzionale)</label>
+                    <label for="emails">📧 Email per Report (opzionale)</label>
                     <input 
                         type="text" 
                         id="emails" 
-                        placeholder="email1@esempio.com, email2@esempio.com, email3@esempio.com"
+                        placeholder="mario@example.com, luigi@example.com"
                     />
-                    <p class="hint">📧 Puoi inserire più email separate da virgola. Riceverai l'email con i link alle notizie + Excel allegato</p>
+                    <p class="hint">Riceverai il report via email con Excel allegato. Separa più email con virgola.</p>
                 </div>
 
                 <div class="info-box">
-                    <strong>⚠️ Importante per Piano Gratuito Mailgun:</strong><br>
-                    Ogni email deve essere verificata su Mailgun prima di ricevere report. Max 5 destinatari. Funziona con Gmail, Yahoo, Libero, etc.
+                    <strong>ℹ️ Mailgun Sandbox:</strong> Le email devono essere verificate su Mailgun prima di ricevere i report (max 5 destinatari).
                 </div>
                 
                 <button type="submit" class="btn" id="analyzeBtn">
@@ -336,16 +323,12 @@
                 </div>
             </div>
             
-            <div id="downloadSection" style="display: none; text-align: center; margin-top: 30px;">
-                <button onclick="downloadExcel()" class="btn" style="width: 100%; padding: 15px; background: var(--accent-color);">
-                    📥 Scarica Ultimo Report Excel
-                </button>
-            </div>
-            
             <div class="results" id="results">
-                <h2 style="margin-bottom: 20px; color: #333;">📊 Risultati</h2>
+                <h2 style="margin-bottom: 20px;">📊 Risultati</h2>
                 <div id="resultsList"></div>
-                <div id="aiResultsList" style="margin-top: 30px;"></div>
+                <button onclick="downloadExcel()" class="btn download-btn">
+                    📥 Scarica Report Excel
+                </button>
             </div>
         </div>
     </div>
@@ -358,8 +341,6 @@
         const currentKeyword = document.getElementById('currentKeyword');
         const results = document.getElementById('results');
         const resultsList = document.getElementById('resultsList');
-        const aiResultsList = document.getElementById('aiResultsList');
-        const downloadSection = document.getElementById('downloadSection');
         
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -370,7 +351,7 @@
             const timeFilter = document.getElementById('timeFilter').value;
             const numResults = parseInt(document.getElementById('numResults').value);
             const includeImages = document.getElementById('includeImages').checked;
-            const includeAI = document.getElementById('includeAI').checked;
+            const includeNews = document.getElementById('includeNews').checked;
             
             if (!keywordsText) {
                 alert('Inserisci almeno una keyword!');
@@ -381,7 +362,7 @@
             const sites = sitesText ? sitesText.split('\n').filter(s => s.trim() !== '') : [];
             
             if (keywords.length > 20) {
-                alert('Massimo 20 keywords per analisi!');
+                alert('Massimo 20 keywords!');
                 return;
             }
             
@@ -389,15 +370,12 @@
             analyzeBtn.disabled = true;
             analyzeBtn.innerHTML = '<span class="spinner"></span> Analisi in corso...';
             progressContainer.style.display = 'block';
-            downloadSection.style.display = 'none';
             results.style.display = 'none';
             
             try {
                 const response = await fetch('/analyze', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         keywords, 
                         sites,
@@ -405,15 +383,12 @@
                         time_filter: timeFilter || null,
                         num_results: numResults,
                         include_images: includeImages,
-                        include_ai: includeAI
+                        include_news: includeNews
                     })
                 });
                 
-                if (!response.ok) {
-                    throw new Error('Errore avvio analisi');
-                }
+                if (!response.ok) throw new Error('Errore avvio analisi');
                 
-                // Monitora progresso
                 monitorProgress();
                 
             } catch (error) {
@@ -428,7 +403,6 @@
                     const response = await fetch('/status');
                     const status = await response.json();
                     
-                    // Aggiorna UI
                     progressFill.style.width = status.progress + '%';
                     progressFill.textContent = status.progress + '%';
                     
@@ -439,31 +413,20 @@
                     if (status.running) {
                         setTimeout(checkStatus, 1000);
                     } else {
-                        // Analisi completata
                         displayResults(status.results);
-                        
-                        // Mostra risposte AI se presenti
-                        if (status.ai_responses && status.ai_responses.length > 0) {
-                            displayAIResults(status.ai_responses);
-                        }
-                        
-                        downloadSection.style.display = 'block';
                         resetUI();
                     }
                 } catch (error) {
-                    console.error('Errore controllo stato:', error);
+                    console.error('Errore:', error);
                     setTimeout(checkStatus, 2000);
                 }
             };
-            
             checkStatus();
         }
         
         function displayResults(data) {
             resultsList.innerHTML = '';
-            aiResultsList.innerHTML = '';
             
-            // Mostra risultati tradizionali
             data.forEach(item => {
                 const div = document.createElement('div');
                 div.className = 'result-item';
@@ -486,66 +449,13 @@
             results.style.display = 'block';
         }
         
-        function displayAIResults(aiData) {
-            if (!aiData || aiData.length === 0) return;
-            
-            const header = document.createElement('h2');
-            header.style.cssText = 'margin-bottom: 20px; color: #333;';
-            header.textContent = '🤖 Risposte AI';
-            aiResultsList.appendChild(header);
-            
-            aiData.forEach(item => {
-                const div = document.createElement('div');
-                div.className = 'result-item';
-                div.style.borderLeft = '5px solid #667eea';
-                
-                let html = `<div class="result-keyword">🔑 ${item.keyword}</div>`;
-                
-                // AI Overview
-                if (item.ai_overview_text) {
-                    const text = item.ai_overview_text.substring(0, 300) + (item.ai_overview_text.length > 300 ? '...' : '');
-                    html += `
-                        <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 10px 0;">
-                            <div style="font-weight: 600; color: #1976d2; margin-bottom: 8px;">✨ Google AI Overview</div>
-                            <div style="color: #333; line-height: 1.6;">${text}</div>
-                        </div>
-                    `;
-                }
-                
-                // Bing Chat
-                if (item.bing_chat_text) {
-                    const text = item.bing_chat_text.substring(0, 300) + (item.bing_chat_text.length > 300 ? '...' : '');
-                    html += `
-                        <div style="background: #fff3e0; padding: 15px; border-radius: 8px; margin: 10px 0;">
-                            <div style="font-weight: 600; color: #f57c00; margin-bottom: 8px;">🤖 Bing Chat (GPT-4)</div>
-                            <div style="color: #333; line-height: 1.6;">${text}</div>
-                        </div>
-                    `;
-                }
-                
-                html += '<div style="margin-top: 10px; color: #666; font-size: 0.9em;">📎 Testo completo e fonti disponibili nell\'Excel</div>';
-                
-                div.innerHTML = html;
-                aiResultsList.appendChild(div);
-            });
-        }
-        
         function resetUI() {
             analyzeBtn.disabled = false;
             analyzeBtn.textContent = 'Avvia Analisi';
         }
         
-        async function downloadExcel() {
-            try {
-                const response = await fetch('/download');
-                if (response.ok) {
-                    window.location.href = '/download';
-                } else {
-                    alert('⚠️ Nessun report disponibile. Esegui prima un\'analisi!');
-                }
-            } catch (error) {
-                alert('⚠️ Nessun report disponibile. Esegui prima un\'analisi!');
-            }
+        function downloadExcel() {
+            window.location.href = '/download';
         }
     </script>
 </body>
